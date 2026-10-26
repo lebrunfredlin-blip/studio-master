@@ -449,6 +449,73 @@ select {
     animation: none !important;
   }
 }
+
+/* Splash Screen */
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  background: #0a0a12;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.4s ease;
+}
+.splash-screen.fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+.splash-logo {
+  width: 100px;
+  height: 100px;
+  animation: splashPulse 2s ease-in-out infinite;
+}
+@keyframes splashPulse {
+  0%, 100% { transform: scale(0.98); opacity: 0.85; }
+  50% { transform: scale(1.02); opacity: 1; }
+}
+.splash-title {
+  margin-top: 24px;
+  font-size: 14px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #8a8896;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.splash-bar {
+  margin-top: 20px;
+  width: 200px;
+  height: 3px;
+  background: rgba(229, 193, 90, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+.splash-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, #e5c15a, transparent);
+  animation: splashShine 1.5s ease-in-out infinite;
+}
+@keyframes splashShine {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+.splash-loading {
+  margin-top: 12px;
+  font-size: 11px;
+  color: #4a4858;
+  font-style: italic;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+@media (prefers-reduced-motion: reduce) {
+  .splash-logo, .splash-bar::after { animation: none; }
+}
 .btn-stop {
   border-color: var(--err);
   color: var(--err);
