@@ -1,0 +1,1071 @@
+<script>
+(function(){
+'use strict';
+
+// ══════════════════════════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════════════════════════
+const API_BASE = 'https://apihub.agnes-ai.com/v1';
+const POLL_BASE = 'https://apihub.agnes-ai.com/agnesapi';
+const MODEL_TEXT = 'agnes-2.5-flash';
+const MODEL_IMAGE = 'agnes-2.1-flash';
+const MODEL_VIDEO = 'agnes-video-v2.0';
+const FRAME_RATE = 24;
+const API_KEYS_STORAGE = 'studio_master_keys_v3';
+const THEME_STORAGE = 'studio_master_theme_v3';
+const DEBUG_MAX = 600;
+const VIDEO_FIRST_POLL_DELAY_SEC = 60;
+const VIDEO_POLL_INTERVALS = [8,8,12,12,20,20,25];
+const VIDEO_MAX_POLL_ATTEMPTS = 100;
+
+// ══════════════════════════════════════════════════════════════════
+// PALETTES
+// ══════════════════════════════════════════════════════════════════
+const WA_PALETTES = [
+  { id:'pink-mint', label:'Rose poudré & Menthe', colors:['#F4C2C2','#A8D8B9','#E5B95A','#F5F0E1','#7B9FB0'] },
+  { id:'coral-teal', label:'Corail & Turquoise', colors:['#E8A87C','#85CDCA','#F4E4BA','#D4A5A5','#7C6A8B'] },
+  { id:'mustard-blue', label:'Moutarde & Bleu ciel', colors:['#F7D794','#778BEB','#E77F67','#F1E7D0','#3B4B55'] },
+  { id:'lavender', label:'Lavande & Ocre', colors:['#C5B7D9','#E5B95A','#F4A6A6','#F5EFE0','#7A8B7E'] },
+  { id:'sage-blush', label:'Sauge & Blush', colors:['#B8C9A8','#F1C6C6','#E8B44A','#F5F0E1','#5B6E7A'] },
+  { id:'ochre-rose', label:'Ocre & Rose fané', colors:['#D9A44A','#E8B8B8','#8FAE8B','#F4E8D0','#6B5B7B'] }
+];
+
+// ══════════════════════════════════════════════════════════════════
+// MODES (90) — simplifiés pour v3
+// ══════════════════════════════════════════════════════════════════
+const MODES = [];
+const TIKTOK_CAT = '📱 TikTok';
+const FILM_CAT = '🎬 Films & Séries';
+
+const TUTORIAL_PROMPTS = {
+  950:'Démontre visuellement le parser JSON 5-stratégies : montre un JSON cassé, puis le même réparé. Utilise des overlays de code.',
+  951:'Démontre le polling multi-endpoints : 4 écrans en parallèle, un par endpoint. Le premier qui répond passe en vert.',
+  952:'Démontre le pool multi-clés : montre 3 clés API en parallèle, chacune avec son worker, sur un dashboard rétro.',
+  953:'Compare le format 1K+ratio vs 1024x1792 : deux images côte à côte, annotées.',
+  954:'Démontre le fallback programmatique : le LLM échoue (croix rouge), le fallback prend le relais (coche verte).',
+  955:'Chatons kung-fu en action : enchaînements de mouvements shaolin, caméra qui orbite.',
+  956:'Tutoriel Wes Anderson : montre la symétrie, les cuts, le champ-contrechamp, avec des flèches annotées.',
+  957:'Palette Generator : affiche les 6 palettes WA, chaque scène en utilise une.',
+  958:'RSS Fallback : montre rss2json qui échoue, allorigins qui prend le relais, puis codetabs en backup.'
+};
+
+const tiktokNames = ['TikTok JT 60s','TikTok Débat Multi-Clés','TikTok Série Quotidienne','TikTok Micro-JT 15s','TikTok Chaton du Jour','TikTok Combinaison Folle','TikTok Analyse de Style','TikTok Anti-Fuite','TikTok Player Canvas Démo','TikTok Parser JSON','TikTok Multi-Endpoints','TikTok Pool Multi-Clés','TikTok Format 1K','TikTok Fallback Programmatique','TikTok Chatons Kung-Fu','TikTok Wes Anderson Tutorial','TikTok Palette Generator','TikTok RSS Fallback','TikTok Validation Manuelle','TikTok JT Personnalisé','TikTok JT Local Vendée','TikTok JT Association','TikTok JT Mariage','TikTok JT Anniversaire','TikTok JT Entreprise','TikTok JT École','TikTok JT Club Sportif','TikTok JT Paroisse','TikTok JT Syndic','TikTok JT Mairie','TikTok JT Parti Politique','TikTok JT ONG','TikTok JT Festival','TikTok JT Salon','TikTok JT Conférence','TikTok JT Formation','TikTok JT Voyage','TikTok JT Cuisine','TikTok JT Sport Quotidien','TikTok JT Météo','TikTok JT Horoscope','TikTok JT Crypto','TikTok JT Bourse','TikTok JT Immobilier','TikTok JT Auto','TikTok JT Tech','TikTok JT Gaming','TikTok JT Cinéma','TikTok JT Livre','TikTok JT Musique'];
+
+tiktokNames.forEach((name, i) => {
+  const n = 941 + i;
+  MODES.push({
+    n, name, category: TIKTOK_CAT,
+    scenes: i === 40 ? 12 : 3,
+    duration: 15,
+    ratio: '9:16',
+    newsSource: i < 20 ? 'lfi' : 'custom',
+    promptTemplate: TUTORIAL_PROMPTS[n] || null
+  });
+});
+
+const filmNames = ['Film Noir Chaton','Film Cyberpunk Chaton','Film Western Chaton','Film Spatial Chaton','Film Historique Chaton','Film Fantastique Chaton','Film Horreur Chaton','Film Romantique Chaton','Film Comédie Chaton','Film Documentaire Chaton','Série Saison 1 Chaton','Série Saison 2 Chaton','Série Anthologie Chaton','Série Spin-Off Chaton','Série Prequel Chaton','Série Sequel Chaton','Série Crossover Chaton','Film 3 Actes Chaton','Film 5 Actes Chaton','Film Chronologique Inversé','Film Boucle Temporelle','Film Multiverse Chaton','Film Found Footage Chaton','Film Mockumentaire Chaton','Film Muet Chaton','Film Rétro 1920 Chaton','Film Rétro 1950 Chaton','Film Rétro 1980 Chaton','Film Rétro 1990 Chaton','Film Futuriste 2100 Chaton','Film Post-Apo Chaton','Film Utopique Chaton','Film Dystopique Chaton','Film Catastrophe Chaton','Film Apocalyptique Chaton','Film Philosophique Chaton','Film Expérimental Chaton','Film Poétique Chaton','Film Musical Chaton','Film Opéra Chaton'];
+const filmPalettes = ['ochre-rose','mustard-blue','ochre-rose','coral-teal','sage-blush','lavender','ochre-rose','pink-mint','mustard-blue','sage-blush','pink-mint','coral-teal','lavender','sage-blush','pink-mint','ochre-rose','mustard-blue','pink-mint','ochre-rose','sage-blush','coral-teal','lavender','ochre-rose','sage-blush','mustard-blue','ochre-rose','pink-mint','coral-teal','lavender','mustard-blue','sage-blush','pink-mint','ochre-rose','coral-teal','sage-blush','lavender','mustard-blue','pink-mint','coral-teal','ochre-rose'];
+
+filmNames.forEach((name, i) => {
+  MODES.push({
+    n: 991 + i, name, category: FILM_CAT,
+    scenes: i < 10 ? 10 : (i < 17 ? 6 : 10),
+    duration: 8,
+    ratio: '16:9',
+    palette: filmPalettes[i]
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════════
+const state = {
+  keyPool: [], activeMode: null, subject: '',
+  isRunning: false, stopRequested: false,
+  script: null, videos: [], isGeneratingVideos: false,
+  isPlayingFilm: false, playRAF: null,
+  voiceEnabled: true, workingPollUrlBuilder: null, palette: null,
+  quota: { videoRpm: 0, imagesGenerated: 0, videosGenerated: 0, lastReset: Date.now() },
+  deferredPrompt: null,
+  theme: 'auto'
+};
+
+// ══════════════════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const nowTime = () => new Date().toLocaleTimeString('fr-FR', { hour12: false });
+
+const setStatus = txt => {
+  const b = $('status-bar'), t = $('status-text');
+  if(!b || !t) return;
+  if(txt){ b.classList.add('visible'); t.textContent = txt; }
+  else b.classList.remove('visible');
+};
+
+let toastTimeout = null;
+const showToast = (msg, type = 'success', duration = 2500) => {
+  const t = $('toast'), x = $('toast-text');
+  if(!t || !x) return;
+  t.classList.remove('visible', 'success', 'error', 'warn');
+  void t.offsetWidth;
+  x.textContent = msg;
+  t.classList.add(type);
+  requestAnimationFrame(() => t.classList.add('visible'));
+  if(toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => t.classList.remove('visible'), duration);
+};
+
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+const sanitizeForApi = text => {
+  if(text == null) return '';
+  return String(text)
+    .replace(/[\u2018\u2019\u201B\u2032\u02BC]/g, "'")
+    .replace(/[\u201C\u201D\u201F\u2033]/g, '"')
+    .replace(/\u2013/g, '-').replace(/\u2014/g, '--').replace(/\u2026/g, '...')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\u00A0/g, ' ').replace(/\u202F/g, ' ');
+};
+
+const safeLocalStorage = {
+  get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
+  set(k, v){ try { localStorage.setItem(k, v); return true; } catch(e){ return false; } },
+  remove(k){ try { localStorage.removeItem(k); } catch(e){} }
+};
+
+// ══════════════════════════════════════════════════════════════════
+// CONSOLE (dans le modal)
+// ══════════════════════════════════════════════════════════════════
+let consoleCount = 0;
+const consoleLog = (level, category, message) => {
+  const view = $('console-view');
+  if(!view) return;
+  const entry = document.createElement('div');
+  entry.className = 'c-line ' + level;
+  entry.innerHTML = '<span class="c-time">' + esc(nowTime()) + '</span><span class="c-tag">[' + esc(category) + ']</span>' + esc(message);
+  view.appendChild(entry);
+  view.scrollTop = view.scrollHeight;
+  while(view.children.length > DEBUG_MAX) view.removeChild(view.firstChild);
+  consoleCount++;
+};
+
+const clearConsole = () => {
+  const view = $('console-view');
+  if(view) view.innerHTML = '';
+  consoleCount = 0;
+};
+
+const copyConsole = () => {
+  const view = $('console-view');
+  if(!view) return;
+  const text = view.textContent;
+  const finish = ok => showToast(ok ? 'Copié ✓' : 'Copie impossible', ok ? 'success' : 'error');
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(() => finish(true)).catch(() => legacyCopy(text, finish));
+    return;
+  }
+  legacyCopy(text, finish);
+};
+
+const legacyCopy = (text, cb) => {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch(e){}
+  document.body.removeChild(ta);
+  cb(ok);
+};
+
+// ══════════════════════════════════════════════════════════════════
+// THEME
+// ══════════════════════════════════════════════════════════════════
+const applyTheme = (theme) => {
+  state.theme = theme;
+  safeLocalStorage.set(THEME_STORAGE, theme);
+  const root = document.documentElement;
+  root.classList.remove('light', 'dark');
+  if(theme === 'light') root.classList.add('light');
+  else if(theme === 'dark') root.classList.add('dark');
+  // 'auto' → prefers-color-scheme du système prend le relais
+};
+
+const toggleTheme = () => {
+  const cycle = { auto: 'light', light: 'dark', dark: 'auto' };
+  applyTheme(cycle[state.theme] || 'auto');
+  showToast('Thème : ' + state.theme, 'success', 1500);
+};
+
+// ══════════════════════════════════════════════════════════════════
+// WAKE LOCK
+// ══════════════════════════════════════════════════════════════════
+let wakeLockSentinel = null, canvasStream = null, canvasInterval = null;
+
+const activateWakeLock = async () => {
+  if('wakeLock' in navigator){
+    try { wakeLockSentinel = await navigator.wakeLock.request('screen'); }
+    catch(e){ consoleLog('warn','WAKELOCK', 'Refusé : ' + e.message); }
+  }
+  if(!wakeLockSentinel){
+    try {
+      const canvas = $('noSleepCanvas');
+      const video = $('noSleepVideo');
+      if(!canvas || !video) return;
+      const ctx = canvas.getContext('2d');
+      if(!ctx) return;
+      ctx.fillStyle = '#000'; ctx.fillRect(0,0,2,2);
+      canvasStream = canvas.captureStream(1);
+      let toggle = false;
+      canvasInterval = setInterval(() => {
+        toggle = !toggle;
+        ctx.fillStyle = toggle ? '#000' : '#010101';
+        ctx.fillRect(0,0,2,2);
+      }, 1000);
+      video.srcObject = canvasStream;
+      video.muted = true;
+      video.playsInline = true;
+      await video.play().catch(() => {});
+    } catch(e){ consoleLog('warn','WAKELOCK', 'Canvas fallback : ' + e.message); }
+  }
+};
+
+const deactivateWakeLock = async () => {
+  if(wakeLockSentinel){
+    try { await wakeLockSentinel.release(); } catch(e){}
+    wakeLockSentinel = null;
+  }
+  if(canvasInterval){ clearInterval(canvasInterval); canvasInterval = null; }
+  const video = $('noSleepVideo');
+  if(video){ try { video.pause(); video.srcObject = null; } catch(e){} }
+  if(canvasStream){ try { canvasStream.getTracks().forEach(t => t.stop()); } catch(e){} canvasStream = null; }
+};
+
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible' && state.isRunning) activateWakeLock();
+  if(document.visibilityState === 'hidden') {
+    // Stop TTS en arrière-plan
+    try { if('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch(e){}
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
+// MULTI-KEYS
+// ══════════════════════════════════════════════════════════════════
+const getStoredKeys = () => {
+  try {
+    const raw = safeLocalStorage.get(API_KEYS_STORAGE);
+    if(!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter(k => typeof k === 'string' && k.trim()) : [];
+  } catch(e){ return []; }
+};
+
+const setStoredKeys = keys => safeLocalStorage.set(API_KEYS_STORAGE, JSON.stringify(keys));
+
+const refreshKeyPool = () => {
+  const stored = getStoredKeys();
+  const old = state.keyPool || [];
+  state.keyPool = stored.map(k => {
+    const existing = old.find(p => p.key === k);
+    return existing || { key:k, lastUsed:0, cooldownUntil:0, active:true, errorCount:0 };
+  });
+};
+
+const hasActiveKey = () => state.keyPool.some(k => k.active);
+
+const getReadyKey = () => {
+  const now = Date.now();
+  const active = state.keyPool.filter(k => k.active);
+  if(active.length === 0) return { key:null, waitMs:0 };
+  const ready = active.filter(k => !k.cooldownUntil || k.cooldownUntil <= now);
+  if(ready.length === 0){
+    const soonest = active.reduce((a,b) => (a.cooldownUntil||0) < (b.cooldownUntil||0) ? a : b);
+    return { key:null, waitMs: Math.max(1000, (soonest.cooldownUntil||0) - now) };
+  }
+  ready.sort((a,b) => (a.lastUsed||0) - (b.lastUsed||0));
+  return { key: ready[0], waitMs: 0 };
+};
+
+const acquireKey = async label => {
+  while(true){
+    if(state.stopRequested) throw new Error('Arrêt demandé');
+    const { key, waitMs } = getReadyKey();
+    if(key){ key.lastUsed = Date.now(); return key; }
+    if(waitMs === 0) throw new Error('Aucune clé API active');
+    consoleLog('warn','CLÉS','Toutes les clés en attente — ' + Math.round(waitMs/1000) + 's');
+    setStatus('Patientez ' + Math.round(waitMs/1000) + 's…');
+    await sleep(waitMs);
+  }
+};
+
+const renderKeyList = () => {
+  const el = $('key-list');
+  if(!el) return;
+  if(state.keyPool.length === 0){ el.innerHTML = ''; return; }
+  const now = Date.now();
+  el.innerHTML = state.keyPool.map((k,i) => {
+    let stateHtml = '<span class="key-state">Active</span>';
+    if(!k.active) stateHtml = '<span class="key-state dead">Inactive</span>';
+    else if(k.cooldownUntil > now){
+      const sec = Math.ceil((k.cooldownUntil - now)/1000);
+      stateHtml = '<span class="key-state cool">Attente ' + sec + 's</span>';
+    }
+    return '<div class="key-item"><span class="key-id">#' + (i+1) + ' · ' + esc(k.key.slice(0,8)) + '…' + esc(k.key.slice(-4)) + '</span>' + stateHtml + '</div>';
+  }).join('');
+};
+
+const testApiKey = async () => {
+  const input = $('api-keys-input');
+  const testBtn = $('api-test-btn');
+  if(!input || !testBtn) return;
+  const raw = (input.value || '').trim();
+  const keys = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+  const firstKey = keys.find(k => k.startsWith('sk-'));
+  if(!firstKey){ showToast('Aucune clé valide à tester', 'error'); return; }
+  testBtn.disabled = true;
+  const originalText = testBtn.textContent;
+  testBtn.textContent = '⏳ Test…';
+  try {
+    const res = await fetch(API_BASE + '/models', {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + firstKey }
+    });
+    if(res.status === 200 || res.status === 404){
+      showToast('Clé API valide ✓', 'success');
+      consoleLog('success','TEST','Clé valide (HTTP ' + res.status + ')');
+    } else if(res.status === 401 || res.status === 403){
+      showToast('Clé API invalide', 'error');
+      consoleLog('error','TEST','Clé invalide (HTTP ' + res.status + ')');
+    } else {
+      showToast('Clé : HTTP ' + res.status, 'warn');
+    }
+  } catch(e){
+    showToast('Erreur réseau', 'error');
+  }
+  testBtn.disabled = false;
+  testBtn.textContent = originalText;
+};
+
+const updateQuota = () => {
+  const now = Date.now();
+  if(now - state.quota.lastReset > 60000){
+    state.quota.videoRpm = 0;
+    state.quota.lastReset = now;
+  }
+  const imgs = $('quota-images'), vids = $('quota-videos');
+  if(imgs) imgs.textContent = state.quota.imagesGenerated;
+  if(vids) vids.textContent = state.quota.videosGenerated;
+};
+
+const saveKeysFromUI = () => {
+  const input = $('api-keys-input');
+  if(!input) return;
+  const raw = input.value || '';
+  const keys = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+  const valid = keys.filter(k => k.startsWith('sk-'));
+  setStoredKeys(valid);
+  refreshKeyPool();
+  updateApiPanel();
+  renderKeyList();
+  showToast(valid.length > 0 ? valid.length + ' clé(s) enregistrée(s) ✓' : 'Aucune clé valide', valid.length > 0 ? 'success' : 'warn');
+  consoleLog('success','CLÉS', valid.length + ' clé(s) active(s)');
+};
+
+const updateApiPanel = () => {
+  const line = $('api-status-line'), text = $('api-status-text');
+  if(!line || !text) return;
+  refreshKeyPool();
+  const n = state.keyPool.length;
+  if(n > 0){
+    line.classList.add('ok');
+    line.classList.remove('err');
+    text.textContent = n + ' clé(s) active(s)';
+  } else {
+    line.classList.remove('ok');
+    line.classList.add('err');
+    text.textContent = 'Aucune clé enregistrée';
+  }
+  renderKeyList();
+  updateOnboarding();
+  updateLaunchButton();
+};
+
+const updateOnboarding = () => {
+  const el = $('onboarding');
+  if(!el) return;
+  if(!hasActiveKey()) el.classList.add('visible');
+  else el.classList.remove('visible');
+};
+
+// ══════════════════════════════════════════════════════════════════
+// API FETCH
+// ══════════════════════════════════════════════════════════════════
+async function apiFetch(url, options, label, maxAttempts){
+  options = options || {};
+  label = label || 'API';
+  maxAttempts = (typeof maxAttempts === 'number' && maxAttempts > 0) ? maxAttempts : 6;
+  let lastErr = null;
+
+  for(let attempt = 0; attempt < maxAttempts; attempt++){
+    if(state.stopRequested) throw new Error('Arrêt demandé');
+    const keyObj = await acquireKey(label);
+    const method = options.method || 'GET';
+    consoleLog('api','REQ ' + label, method + ' ' + url.slice(0, 60) + '… (essai ' + (attempt+1) + '/' + maxAttempts + ')');
+
+    const headers = Object.assign({}, options.headers || {}, { 'Authorization': 'Bearer ' + keyObj.key });
+    const finalOptions = Object.assign({}, options, { headers });
+
+    try {
+      const res = await fetch(url, finalOptions);
+      let errorText = '';
+      if(!res.ok){ try { errorText = (await res.clone().text()).slice(0, 400); } catch(e){} }
+      consoleLog('api','RÉP ' + label, 'HTTP ' + res.status);
+
+      if(res.ok){ keyObj.errorCount = 0; return res; }
+
+      if([400, 401, 403, 404].includes(res.status)){
+        if(res.status === 401 || res.status === 403){
+          keyObj.errorCount++;
+          if(keyObj.errorCount >= 3){
+            keyObj.active = false;
+            consoleLog('error','CLÉS','Clé désactivée après 3 erreurs');
+            renderKeyList();
+          }
+        }
+        const err = new Error('HTTP ' + res.status);
+        err.status = res.status;
+        throw err;
+      }
+
+      if(res.status === 429){
+        const wait = Math.min(120, 20 + attempt * 15);
+        keyObj.cooldownUntil = Date.now() + wait * 1000;
+        consoleLog('warn','RATE','Attente ' + wait + 's');
+        renderKeyList();
+        continue;
+      }
+
+      if([500, 502, 503, 504, 520, 522, 524].includes(res.status)){
+        const wait = Math.min(60, 8 + attempt * 6);
+        consoleLog('warn','SERVICE','HTTP ' + res.status + ' — attente ' + wait + 's');
+        setStatus('Service occupé — patientez…');
+        await sleep(wait * 1000);
+        continue;
+      }
+
+      await sleep(Math.min(60, 6 + attempt * 5) * 1000);
+    } catch(e){
+      if(e.message === 'Arrêt demandé') throw e;
+      if(e.status && [400, 401, 403, 404].includes(e.status)) throw e;
+      lastErr = e;
+      const wait = Math.min(45, 4 + attempt * 4);
+      consoleLog('warn','NETWORK', e.message + ' — retry ' + wait + 's');
+      await sleep(wait * 1000);
+    }
+  }
+  throw lastErr || new Error('Tentatives épuisées pour ' + label);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// JSON PARSER (5 stratégies)
+// ══════════════════════════════════════════════════════════════════
+function balanceJson(text){
+  let ob=0, ok=0, inString=false, escape=false;
+  for(let i=0;i<text.length;i++){
+    const ch = text[i];
+    if(escape){ escape=false; continue; }
+    if(ch==='\\'){ escape=true; continue; }
+    if(ch==='"'){ inString=!inString; continue; }
+    if(inString) continue;
+    if(ch==='{') ob++; else if(ch==='}') ob--;
+    else if(ch==='[') ok++; else if(ch===']') ok--;
+  }
+  let r = text;
+  if(inString) r += '"';
+  while(ok>0){ r+=']'; ok--; }
+  while(ob>0){ r+='}'; ob--; }
+  return r;
+}
+
+function fixUnquotedKeys(text){
+  let out='', i=0, inString=false, escape=false;
+  const stack=[]; let lastStructural='{';
+  while(i<text.length){
+    const ch = text[i];
+    if(escape){ out+=ch; escape=false; i++; continue; }
+    if(ch==='\\'){ out+=ch; escape=true; i++; continue; }
+    if(inString){ out+=ch; if(ch==='"') inString=false; i++; continue; }
+    if(ch==='"'){ inString=true; out+=ch; i++; continue; }
+    if(ch==='{'){ stack.push('{'); lastStructural='{'; out+=ch; i++; continue; }
+    if(ch==='['){ stack.push('['); lastStructural='['; out+=ch; i++; continue; }
+    if(ch==='}'){ stack.pop(); lastStructural='}'; out+=ch; i++; continue; }
+    if(ch===']'){ stack.pop(); lastStructural=']'; out+=ch; i++; continue; }
+    if(ch===','){ lastStructural=','; out+=ch; i++; continue; }
+    if(ch===':'){ lastStructural=':'; out+=ch; i++; continue; }
+    if(/\s/.test(ch)){ out+=ch; i++; continue; }
+    const top = stack[stack.length-1];
+    if((lastStructural==='{'||lastStructural===',') && top==='{' && /[A-Za-z_$]/.test(ch)){
+      let j=i; while(j<text.length && /[A-Za-z0-9_$]/.test(text[j])) j++;
+      let k=j; while(k<text.length && /\s/.test(text[k])) k++;
+      if(text[k]===':'){ out += '"' + text.slice(i,j) + '"'; i = j; continue; }
+    }
+    out+=ch; i++;
+  }
+  return out;
+}
+
+function fixMissingCommas(text){
+  let out='', i=0, inString=false, escape=false, justClosedValue=false;
+  while(i<text.length){
+    const ch = text[i];
+    if(escape){ out+=ch; escape=false; i++; continue; }
+    if(ch==='\\'){ out+=ch; escape=true; i++; continue; }
+    if(inString){
+      out+=ch;
+      if(ch==='"'){
+        inString=false;
+        let j=i+1; while(j<text.length && /\s/.test(text[j])) j++;
+        justClosedValue = (text[j] !== ':');
+      }
+      i++; continue;
+    }
+    if(/\s/.test(ch)){ out+=ch; i++; continue; }
+    if(justClosedValue && ch!==',' && ch!=='}' && ch!==']' && ch!==':'){ out+=','; justClosedValue=false; }
+    if(ch==='"'){ inString=true; justClosedValue=false; out+=ch; i++; continue; }
+    if(ch==='{'){ justClosedValue=false; out+=ch; i++; continue; }
+    if(ch==='['){ justClosedValue=false; out+=ch; i++; continue; }
+    if(ch==='}'){ justClosedValue=true; out+=ch; i++; continue; }
+    if(ch===']'){ justClosedValue=true; out+=ch; i++; continue; }
+    if(ch===','){ justClosedValue=false; out+=ch; i++; continue; }
+    if(ch===':'){ justClosedValue=false; out+=ch; i++; continue; }
+    justClosedValue=false; out+=ch; i++;
+  }
+  return out;
+}
+
+function repairJson(text){
+  if(!text) return null;
+  let c = String(text).trim();
+  const fm = c.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if(fm) c = fm[1].trim();
+  const fb = c.indexOf('{');
+  if(fb < 0) return null;
+  c = c.slice(fb);
+  const lb = c.lastIndexOf('}');
+  if(lb > 0) c = c.slice(0, lb+1);
+  let out='', inString=false, strDelim='"', escape=false;
+  for(let i=0;i<c.length;i++){
+    const ch = c[i];
+    if(escape){
+      if('"\\/bfnrtu'.includes(ch)){ out += '\\'+ch; } else { out += ch; }
+      escape=false; continue;
+    }
+    if(ch==='\\'){ escape=true; continue; }
+    if(ch==='"'||ch==="'"){
+      if(!inString){ inString=true; strDelim=ch; out+='"'; continue; }
+      if(ch===strDelim){ inString=false; out+='"'; continue; }
+      if(ch==='"'){ out+='\\"'; continue; }
+      out+="'"; continue;
+    }
+    if(inString){
+      if(ch==='\n'){ out+='\\n'; continue; }
+      if(ch==='\r'){ out+='\\r'; continue; }
+      if(ch==='\t'){ out+='\\t'; continue; }
+      const code = ch.charCodeAt(0);
+      if(code < 32){ out += '\\u'+code.toString(16).padStart(4,'0'); continue; }
+    }
+    out += ch;
+  }
+  if(escape) out += '\\';
+  if(inString) out += '"';
+  try { out = fixUnquotedKeys(out); } catch(e){}
+  try { out = fixMissingCommas(out); } catch(e){}
+  out = out.replace(/,\s*([}\]])/g, '$1');
+  return out;
+}
+
+function extractJson(text){
+  if(!text) return null;
+  const repaired = repairJson(text);
+  if(!repaired) return null;
+  try { return JSON.parse(repaired); }
+  catch(e1){
+    try { return JSON.parse(balanceJson(repaired)); }
+    catch(e2){ consoleLog('error','PARSE','JSON irréparable'); return null; }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// MODE SELECTOR (simplifié pour v3)
+// ══════════════════════════════════════════════════════════════════
+function renderModeCategories(){
+  const container = $('mode-categories');
+  if(!container) return;
+
+  const tiktokModes = MODES.filter(m => m.category === TIKTOK_CAT);
+  const filmModes = MODES.filter(m => m.category === FILM_CAT);
+
+  let html = '';
+
+  html += '<div class="mode-category">';
+  html += '<div class="mode-category-header">📱 TikTok <span class="mode-category-count">' + tiktokModes.length + ' styles</span></div>';
+  html += '<div class="mode-grid">';
+  tiktokModes.forEach(m => {
+    const active = state.activeMode && state.activeMode.n === m.n ? ' active' : '';
+    html += '<div class="mode-card' + active + '" data-mode="' + m.n + '"><span class="mode-name">' + esc(m.name.replace(/^TikTok /, '')) + '</span></div>';
+  });
+  html += '</div></div>';
+
+  html += '<div class="mode-category">';
+  html += '<div class="mode-category-header">🎬 Films & Séries <span class="mode-category-count">' + filmModes.length + ' styles</span></div>';
+  html += '<div class="mode-grid">';
+  filmModes.forEach(m => {
+    const active = state.activeMode && state.activeMode.n === m.n ? ' active' : '';
+    html += '<div class="mode-card' + active + '" data-mode="' + m.n + '"><span class="mode-name">' + esc(m.name) + '</span></div>';
+  });
+  html += '</div></div>';
+
+  container.innerHTML = html;
+
+  // Délégation
+  if(container._handler) container.removeEventListener('click', container._handler);
+  container._handler = e => {
+    const card = e.target.closest('[data-mode]');
+    if(card) selectMode(parseInt(card.dataset.mode, 10));
+  };
+  container.addEventListener('click', container._handler);
+}
+
+function selectMode(n){
+  const mode = MODES.find(m => m.n === n);
+  if(!mode) return;
+  state.activeMode = mode;
+  state.palette = mode.palette
+    ? (WA_PALETTES.find(p => p.id === mode.palette) || WA_PALETTES[0])
+    : WA_PALETTES[Math.floor(Math.random() * WA_PALETTES.length)];
+  renderModeCategories();
+  // Pré-remplir les paramètres avancés
+  const scenesInput = $('param-scenes');
+  const durationInput = $('param-duration');
+  if(scenesInput) scenesInput.value = mode.scenes;
+  if(durationInput) durationInput.value = mode.duration;
+  updateLaunchButton();
+}
+
+function updateLaunchButton(){
+  const btn = $('launch-btn');
+  if(!btn) return;
+  const hasKey = hasActiveKey();
+  const subjectEl = $('subject-input');
+  const hasSubject = subjectEl && subjectEl.value.trim().length >= 5;
+  const hasMode = !!state.activeMode;
+  btn.disabled = !hasKey || !hasSubject || !hasMode || state.isRunning;
+  if(state.isRunning) btn.textContent = '⏳ Génération en cours…';
+  else if(!hasKey) btn.textContent = '🔑 Ajoutez votre clé API';
+  else if(!hasMode) btn.textContent = '🎯 Choisissez un style';
+  else if(!hasSubject) btn.textContent = '💡 Décrivez votre sujet';
+  else btn.textContent = '▶ Lancer la génération';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// NEWS RSS
+// ══════════════════════════════════════════════════════════════════
+async function fetchLfiNews(){
+  const rssUrl = 'https://news.google.com/rss/search?q=La+France+insoumise&hl=fr&gl=FR&ceid=FR:fr';
+  const proxies = [
+    'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(rssUrl),
+    'https://api.allorigins.win/raw?url=' + encodeURIComponent(rssUrl)
+  ];
+  for(let i = 0; i < proxies.length; i++){
+    try {
+      const res = await fetch(proxies[i]);
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      if(i === 0){
+        const data = await res.json();
+        if(data.status === 'ok' && data.items){
+          return data.items.slice(0, 20).map((it, idx) => ({ title: it.title, source: it.author || 'Google News', rank: idx+1 }));
+        }
+      } else {
+        const text = await res.text();
+        const doc = new DOMParser().parseFromString(text, 'text/xml');
+        const items = doc.querySelectorAll('item');
+        const out = [];
+        items.forEach((item, idx) => {
+          if(idx >= 20) return;
+          const title = item.querySelector('title')?.textContent || '';
+          const src = item.querySelector('source')?.textContent || 'Google News';
+          if(title) out.push({ title, source: src, rank: idx+1 });
+        });
+        if(out.length > 0) return out;
+      }
+    } catch(e){
+      consoleLog('warn','RSS','Proxy ' + (i+1) + ' échoué');
+    }
+  }
+  consoleLog('warn','RSS','Fallback démo');
+  return [
+    { title: "Mobilisation lycéenne : LFI propose une commission d'enquête", source: 'LCP', rank: 1 },
+    { title: 'Jean-Luc Mélenchon soutient le mouvement lycéen', source: 'Public Sénat', rank: 2 },
+    { title: 'Blocage des lycées : Mathilde Panot appelle à la démission', source: 'BFMTV', rank: 3 },
+    { title: "Bruno Retailleau envisage l'interdiction de LFI", source: 'LCP', rank: 4 },
+    { title: 'Éric Coquerel dénonce la répression contre les lycéens', source: 'Public Sénat', rank: 5 },
+    { title: 'Municipales 2026 : LFI obtient de bons résultats à Roubaix', source: 'Radio France', rank: 6 }
+  ];
+}
+
+// ══════════════════════════════════════════════════════════════════
+// IMAGE
+// ══════════════════════════════════════════════════════════════════
+async function generateImage(prompt, ratio){
+  ratio = ratio || '9:16';
+  const body = { model: MODEL_IMAGE, prompt: sanitizeForApi(prompt), n: 1, size: '1K', ratio: ratio };
+  const res = await apiFetch(API_BASE + '/images/generations', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  }, 'Image', 4);
+  const data = await res.json();
+  const item = data.data && data.data[0];
+  if(!item) throw new Error("Pas d'image");
+  state.quota.imagesGenerated++;
+  updateQuota();
+  if(item.url) return item.url;
+  if(item.b64_json) return 'data:image/png;base64,' + item.b64_json;
+  throw new Error('Format inconnu');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// VIDEO — multi-endpoints polling
+// ══════════════════════════════════════════════════════════════════
+function decodeCompositeId(composite){
+  if(!composite || typeof composite !== 'string') return null;
+  if(!composite.startsWith('video_')) return null;
+  let b64 = composite.slice(6);
+  while(b64.length % 4) b64 += '=';
+  try {
+    const decoded = atob(b64);
+    const m = decoded.match(/video_id:([^;]+)/);
+    if(m && m[1]) return m[1].trim();
+  } catch(e){}
+  return null;
+}
+
+async function createVideoTask(prompt, imageUrl, duration){
+  const body = { model: MODEL_VIDEO, prompt: sanitizeForApi(prompt), num_frames: duration, frame_rate: FRAME_RATE };
+  if(imageUrl) body.image = imageUrl;
+  consoleLog('ai','PROMPT VIDÉO','Envoi ' + duration + ' frames');
+  const res = await apiFetch(API_BASE + '/videos', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  }, 'Vidéo', 4);
+  const data = await res.json();
+  const compositeId = data.video_id || data.id || data.task_id;
+  if(!compositeId) throw new Error('Pas de video_id');
+  const innerId = decodeCompositeId(compositeId);
+  state.quota.videoRpm++;
+  updateQuota();
+  return { compositeId, innerId, raw: data };
+}
+
+function buildIdCandidates(videoIdObj){
+  const ids = [];
+  if(typeof videoIdObj === 'string'){
+    ids.push({ label:'composite', value:videoIdObj });
+    const inner = decodeCompositeId(videoIdObj);
+    if(inner && inner !== videoIdObj) ids.push({ label:'inner', value:inner });
+  } else if(videoIdObj && typeof videoIdObj === 'object'){
+    if(videoIdObj.compositeId) ids.push({ label:'composite', value:videoIdObj.compositeId });
+    if(videoIdObj.innerId) ids.push({ label:'inner', value:videoIdObj.innerId });
+    const raw = videoIdObj.raw || {};
+    for(const f of ['id','task_id','request_id']){
+      if(raw[f] && !ids.some(x => x.value === raw[f])) ids.push({ label:'raw.'+f, value:raw[f] });
+    }
+  }
+  const seen = new Set();
+  return ids.filter(x => { if(seen.has(x.value)) return false; seen.add(x.value); return true; });
+}
+
+const POLL_URL_BUILDERS = [
+  { name:'agnesapi', build:(id) => POLL_BASE + '?video_id=' + encodeURIComponent(id) + '&model_name=' + encodeURIComponent(MODEL_VIDEO) },
+  { name:'v1-rest', build:(id) => API_BASE + '/videos/' + encodeURIComponent(id) },
+  { name:'v1-status', build:(id) => API_BASE + '/videos/' + encodeURIComponent(id) + '/status' },
+  { name:'v1-model', build:(id) => API_BASE + '/videos/' + encodeURIComponent(id) + '?model_name=' + encodeURIComponent(MODEL_VIDEO) }
+];
+
+async function pollVideo(videoIdObj, onProgress){
+  const candidates = buildIdCandidates(videoIdObj);
+  if(candidates.length === 0) throw new Error('Aucun ID exploitable');
+  let rem = VIDEO_FIRST_POLL_DELAY_SEC;
+  while(rem > 0){
+    if(state.stopRequested) throw new Error('Arrêt demandé');
+    onProgress('Préparation… (' + rem + 's)');
+    await sleep(1000); rem--;
+  }
+  let working = { builder: state.workingPollUrlBuilder || null, id: null };
+  for(let attempt = 0; attempt < VIDEO_MAX_POLL_ATTEMPTS; attempt++){
+    if(state.stopRequested) throw new Error('Arrêt demandé');
+    if(attempt > 0){
+      const idx = Math.min(attempt - 1, VIDEO_POLL_INTERVALS.length - 1);
+      let r = VIDEO_POLL_INTERVALS[idx];
+      while(r > 0){
+        if(state.stopRequested) throw new Error('Arrêt demandé');
+        onProgress('Création… (' + r + 's)');
+        await sleep(1000); r--;
+      }
+    }
+    const approaches = [];
+    if(working.builder && working.id) approaches.push({ builder: working.builder, id: working.id, priority: true });
+    for(const builder of POLL_URL_BUILDERS){
+      for(const cand of candidates){
+        if(!approaches.some(a => a.builder === builder && a.id === cand.value)){
+          approaches.push({ builder, id: cand.value, idLabel: cand.label });
+        }
+      }
+    }
+    for(const ap of approaches){
+      if(state.stopRequested) throw new Error('Arrêt demandé');
+      const url = ap.builder.build(ap.id);
+      try {
+        const res = await apiFetch(url, { method:'GET' }, 'Polling', 2);
+        const d = await res.json();
+        if(!working.builder || !working.id){
+          working.builder = ap.builder;
+          working.id = ap.id;
+          state.workingPollUrlBuilder = ap.builder;
+        }
+        const status = d.status || 'unknown';
+        const progress = d.progress || 0;
+        onProgress('Création… ' + progress + '%');
+        if(status === 'completed' || status === 'succeeded' || status === 'done'){
+          const videoUrl = (d.metadata && d.metadata.url) || d.url || (d.output && d.output.url);
+          if(!videoUrl) throw new Error("Terminé mais pas d'URL");
+          state.quota.videosGenerated++;
+          updateQuota();
+          return videoUrl;
+        }
+        if(status === 'failed' || status === 'error' || status === 'cancelled'){
+          throw new Error('Échec (' + status + ')');
+        }
+        break;
+      } catch(e){
+        if(e.message === 'Arrêt demandé') throw e;
+        if(e.status === 404) continue;
+        if(e.status === 401 || e.status === 403) continue;
+        break;
+      }
+    }
+  }
+  throw new Error('Délai maximal dépassé');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// SCRIPT — LLM
+// ══════════════════════════════════════════════════════════════════
+function buildScriptPrompt(mode, subject, palette, newsItems){
+  const sceneCount = mode.scenes;
+  const duration = mode.duration;
+  const paletteStr = palette.colors.join(', ');
+  const newsBlock = newsItems && newsItems.length
+    ? '\n\nACTUALITÉS RÉELLES :\n' + newsItems.slice(0, 20).map((n,i) => (i+1)+'. « '+n.title+' » ('+n.source+')').join('\n')
+    : '';
+  const tutorialBlock = mode.promptTemplate
+    ? '\n\nINSTRUCTION SPÉCIFIQUE POUR CE MODE :\n' + mode.promptTemplate
+    : '';
+
+  return [
+    'Tu es scénariste et réalisateur. Tu crées un scénario de ' + sceneCount + ' scènes de ' + duration + 's chacune.',
+    '',
+    'MODE : ' + mode.name,
+    'SUJET : « ' + subject + ' »',
+    tutorialBlock,
+    '',
+    'STYLE WES ANDERSON STRICT : symétrie bilatérale parfaite, cadrage centré, 35mm film grain, palette pastel.',
+    'Personnages : CHATONS KUNG-FU (tête de chaton kawaii sur corps humain) avec CASQUE DE MOTO RÉTRO et TENUE DE SHAOLIN.',
+    'Montage : 4 à 6 plans par scène avec cuts francs.',
+    'Acting DEADPAN : aucun sourire.',
+    'Palette imposée : ' + palette.label + ' → ' + paletteStr + '.',
+    '',
+    'DIALOGUES FR : chaque scène a un objet "dialogue" avec "line_fr" EN FRANÇAIS (5-10 mots max).',
+    newsBlock,
+    '',
+    'RÈGLES JSON STRICTES :',
+    '- Toutes les chaînes sur UNE SEULE LIGNE.',
+    '- Échappe les guillemets doubles internes en \\".',
+    '- Pas de virgule finale. Pas de markdown.',
+    '',
+    'FORMAT (UNIQUEMENT ce JSON) :',
+    '{',
+    '  "title": "titre court",',
+    '  "logline": "résumé en une phrase",',
+    '  "characters": [{ "name": "Nom", "chat_face": "race", "helmet": "casque", "outfit": "tenue", "physical_description": "english" }],',
+    '  "scenes": [{',
+    '    "scene_number": 1,',
+    '    "type": "plateau" | "reportage" | "scene",',
+    '    "character": { "name": "Nom", "physical_description": "english" },',
+    '    "decor": "english description",',
+    '    "action": "english description",',
+    '    "dialogue": { "speaker": "Nom", "line_fr": "phrase FR" },',
+    '    "text_overlay_fr": "BANDEAU",',
+    '    "shots": [{ "shot_number": 1, "camera": { "type": "wide", "movement": "locked-off", "framing": "centered" }, "description": "shot", "duration_seconds": 2 }]',
+    '  }]',
+    '}',
+    'IMPORTANT : "shots" OBLIGATOIRE avec 4-6 plans par scène.'
+  ].join('\n');
+}
+
+async function callChatCompletion(systemPrompt, userPrompt, label, maxTokens, temperature){
+  const sysMsg = sanitizeForApi(systemPrompt) || 'Assistant.';
+  const usrMsg = sanitizeForApi(userPrompt);
+  if(!usrMsg) throw new Error('Prompt vide');
+  const body = {
+    model: MODEL_TEXT,
+    messages: [{ role:'system', content:sysMsg }, { role:'user', content:usrMsg }],
+    temperature: typeof temperature === 'number' ? temperature : 0.7,
+    max_tokens: maxTokens || 8000,
+    reasoning_effort: 'none',
+    chat_template_kwargs: { enable_thinking: false }
+  };
+  const res = await apiFetch(API_BASE + '/chat/completions', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  }, label, 4);
+  const data = await res.json();
+  const choice = data.choices && data.choices[0];
+  const msg = choice && choice.message;
+  let content = msg && msg.content;
+  if(!content && msg && msg.reasoning_content) content = msg.reasoning_content;
+  return content;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// FALLBACK SCRIPT
+// ══════════════════════════════════════════════════════════════════
+function buildFallbackScript(mode, subject, palette, newsItems){
+  const chatBreeds = ['siamois','persan','écossais','chartreux','maine coon','angora','bengal','sacre-birmanie','norvegien','sphynx'];
+  const helmets = ['casque moto rétro chromé','casque bulle transparent','casque intégral moutarde','casque pilote à antennes','casque visière rose'];
+  const outfits = ['kimono Shaolin corail','kimono Shaolin lavande','kimono Shaolin sauge','kimono Shaolin bleu ciel','kimono Shaolin moutarde'];
+  const presenter = {
+    name: 'Élise Moreau', chat_face: 'siamoise aux yeux bleus',
+    helmet: 'casque moto rétro chromé', outfit: 'kimono Shaolin rose poudré',
+    physical_description: 'cute kawaii humanoid kitten with siamese cat face, wearing a chrome retro motorcycle helmet and a pastel pink Shaolin kimono, wes anderson deadpan'
+  };
+  const characters = [presenter];
+  for(let i=0; i<mode.scenes-2; i++){
+    characters.push({
+      name: 'Reporter ' + (i+1),
+      chat_face: chatBreeds[i % chatBreeds.length] + ' aux grands yeux',
+      helmet: helmets[i % helmets.length],
+      outfit: outfits[i % outfits.length],
+      physical_description: 'cute kawaii humanoid kitten with ' + chatBreeds[i % chatBreeds.length] + ' cat face, wearing ' + helmets[i % helmets.length] + ' and ' + outfits[i % outfits.length] + ', wes anderson deadpan'
+    });
+  }
+  const defaultShots = () => [
+    { shot_number:1, camera:{ type:'wide symmetric', movement:'locked-off', framing:'centered wide' }, description:'wide symmetric tableau', duration_seconds:2 },
+    { shot_number:2, camera:{ type:'medium', movement:'slow dolly-in', framing:'centered medium' }, description:'centered medium', duration_seconds:2 },
+    { shot_number:3, camera:{ type:'close-up', movement:'locked-off', framing:'centered close-up' }, description:'close-up face', duration_seconds:2 },
+    { shot_number:4, camera:{ type:'champ-contrechamp', movement:'locked-off', framing:'centered medium' }, description:'shot-reverse-shot', duration_seconds:2 },
+    { shot_number:5, camera:{ type:'insert', movement:'locked-off', framing:'close-up object' }, description:'insert retro object', duration_seconds:2 }
+  ];
+  const scenes = [];
+  for(let i=0; i<mode.scenes; i++){
+    const isFirst = i === 0, isLast = i === mode.scenes - 1;
+    const isPlateau = isFirst || isLast;
+    const char = isPlateau ? presenter : characters[Math.min(i, characters.length-1)];
+    const newsTitle = (newsItems && newsItems[i % newsItems.length]) ? newsItems[i % newsItems.length].title : '';
+    let line;
+    if(isFirst) line = 'Bonsoir, voici notre émission spéciale.';
+    else if(isLast) line = 'Merci de nous avoir suivis, bonne soirée.';
+    else if(newsTitle) line = newsTitle.length > 80 ? newsTitle.slice(0, 78) + '...' : newsTitle;
+    else line = 'Voici notre reportage sur le terrain.';
+    scenes.push({
+      scene_number: i+1, type: isPlateau ? 'plateau' : 'reportage',
+      character: char,
+      decor: 'retro-futuristic pastel symmetric set, wes anderson style, palette ' + palette.label,
+      action: 'the kitten character speaks to camera, deadpan',
+      dialogue: { speaker: char.name, line_fr: line },
+      text_overlay_fr: (subject || 'ÉMISSION').toUpperCase().slice(0, 40),
+      shots: defaultShots()
+    });
+  }
+  return {
+    title: (subject || 'Ma création').slice(0, 60),
+    logline: subject || 'Une émission cinématographique dans le style Wes Anderson.',
+    characters, scenes
+  };
+}
+
+function normalizeScript(script, mode, subject, palette, newsItems){
+  if(!script || !script.scenes || !Array.isArray(script.scenes)) return null;
+  if(!script.characters || !Array.isArray(script.characters) || script.characters.length === 0){
+    script.characters = [{ name:'Présentateur', chat_face:'siamois', helmet:'casque rétro', outfit:'kimono Shaolin rose', physical_description:'kawaii humanoid kitten' }];
+  }
+  if(script.scenes.length > mode.scenes) script.scenes = script.scenes.slice(0, mode.scenes);
+  while(script.scenes.length < mode.scenes){
+    const idx = script.scenes.length;
+    const srcScene = script.scenes[script.scenes.length - 1] || {};
+    script.scenes.push({
+      scene_number: idx+1, type: 'scene',
+      character: srcScene.character || script.characters[0],
+      decor: srcScene.decor || 'pastel symmetric set',
+      action: 'the kitten speaks to camera',
+      dialogue: { speaker: (srcScene.character&&srcScene.character.name)||'Présentateur', line_fr:'Suite de notre émission.' },
+      text_overlay_fr: (subject||'ÉMISSION').toUpperCase().slice(0,40),
+      shots: srcScene.shots || [{ shot_number:1, camera:{ type:'wide symmetric', movement:'locked-off', framing:'centered wide' }, description:'wide shot', duration_seconds:2 }]
+    });
+  }
+  script.scenes.forEach((sc, i) => {
+    sc.scene_number = i+1;
+    if(!sc.character || !sc.character.name) sc.character = script.characters[Math.min(i, script.characters.length-1)];
+    if(!sc.character.physical_description){
+      const ch = sc.character;
+      sc.character.physical_description = 'cute kawaii humanoid kitten with ' + (ch.chat_face||'siamois') + ' cat face, wearing ' + (ch.helmet||'casque rétro') + ' and ' + (ch.outfit||'kimono pastel') + ', wes anderson deadpan';
+    }
+    if(!Array.isArray(sc.shots) || sc.shots.length < 3){
+      sc.shots = [
+        { shot_number:1, camera:{ type:'wide symmetric', movement:'locked-off', framing:'centered wide' }, description:'wide symmetric', duration_seconds:2 },
+        { shot_number:2, camera:{ type:'medium', movement:'slow dolly-in', framing:'centered medium' }, description:'medium shot', duration_seconds:2 },
+        { shot_number:3, camera:{ type:'close-up', movement:'locked-off', framing:'centered close-up' }, description:'close-up', duration_seconds:2 }
+      ];
+    }
+    if(!sc.dialogue || !sc.dialogue.line_fr){
+      const newsTitle = (newsItems && newsItems[i % newsItems.length]) ? newsItems[i % newsItems.length].title : '';
+      let fallbackLine;
+      if(i === 0) fallbackLine = 'Bonsoir, voici notre émission.';
+      else if(i === script.scenes.length-1) fallbackLine = 'Merci de nous avoir suivis.';
+      else if(newsTitle) fallbackLine = newsTitle.length > 80 ? newsTitle.slice(0,78)+'...' : newsTitle;
+      else fallbackLine = 'Voici notre reportage.';
+      sc.dialogue = { speaker: sc.character.name || 'Présentateur', line_fr: fallbackLine };
+    }
+    if(!sc.decor) sc.decor = 'pastel retro-futuristic symmetric set';
+    if(!sc.action) sc.action = 'the kitten speaks to camera, deadpan';
+    if(!sc.text_overlay_fr) sc.text_overlay_fr = (subject || 'ÉMISSION').toUpperCase().slice(0, 40);
+  });
+  return script;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// EXPOSITION GLOBALE POUR LE BLOC 3
+// ══════════════════════════════════════════════════════════════════
+window.__SM = {
+  state, MODES, WA_PALETTES,
+  $, esc, sleep, nowTime, setStatus, showToast,
+  isIOS, sanitizeForApi, safeLocalStorage,
+  consoleLog, clearConsole, copyConsole,
+  applyTheme, toggleTheme,
+  activateWakeLock, deactivateWakeLock,
+  refreshKeyPool, hasActiveKey, renderKeyList, updateApiPanel,
+  saveKeysFromUI, testApiKey, updateQuota, updateOnboarding,
+  apiFetch, extractJson,
+  renderModeCategories, selectMode, updateLaunchButton,
+  fetchLfiNews, generateImage,
+  createVideoTask, pollVideo,
+  buildScriptPrompt, callChatCompletion,
+  buildFallbackScript, normalizeScript,
+  API_BASE, POLL_BASE, MODEL_TEXT, MODEL_IMAGE, MODEL_VIDEO, FRAME_RATE,
+  API_KEYS_STORAGE, THEME_STORAGE, VIDEO_FIRST_POLL_DELAY_SEC,
+  VIDEO_POLL_INTERVALS, VIDEO_MAX_POLL_ATTEMPTS
+};
+
+})();
+</script>

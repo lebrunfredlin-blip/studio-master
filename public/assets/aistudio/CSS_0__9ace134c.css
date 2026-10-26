@@ -1,0 +1,55 @@
+/* ═══════════ BOUTONS FLOTTANTS ═══════════ */
+.launch-floating{
+position:fixed;
+bottom:calc(1rem + var(--safe-bottom));
+left:50%;
+transform:translateX(-50%) translateY(120px);
+width:min(calc(100% - 2rem), 500px);
+min-height:56px;
+border-radius:28px;
+border:none;
+background:linear-gradient(135deg,var(--acc2),var(--acc));
+color:var(--bg);
+font-size:clamp(.9rem,3.4vw,1.05rem);
+font-weight:700;
+letter-spacing:.03em;
+box-shadow:0 8px 32px rgba(229,193,90,.4);
+z-index:80;
+cursor:pointer;
+display:flex;align-items:center;justify-content:center;gap:.5rem;
+transition:transform .35s cubic-bezier(.2,.9,.3,1.2), box-shadow .2s;
+touch-action:manipulation;
+padding:.8rem 1.4rem;
+}
+.launch-floating.visible{transform:translateX(-50%) translateY(0)}
+.launch-floating:hover:not(:disabled){box-shadow:0 12px 40px rgba(229,193,90,.55)}
+.launch-floating:active:not(:disabled){transform:translateX(-50%) translateY(0) scale(.98)}
+.launch-floating:disabled{opacity:.5;cursor:not-allowed;box-shadow:0 4px 16px rgba(0,0,0,.3)}
+
+.stop-floating{
+position:fixed;
+bottom:calc(1rem + var(--safe-bottom));
+left:50%;
+transform:translateX(-50%) translateY(120px);
+width:min(calc(100% - 2rem), 500px);
+min-height:56px;
+border-radius:28px;
+border:2px solid var(--err);
+background:rgba(200,90,74,.15);
+color:var(--err);
+font-size:clamp(.9rem,3.4vw,1.05rem);
+font-weight:700;
+letter-spacing:.03em;
+z-index:80;
+cursor:pointer;
+display:flex;align-items:center;justify-content:center;gap:.5rem;
+transition:transform .35s cubic-bezier(.2,.9,.3,1.2);
+touch-action:manipulation;
+padding:.8rem 1.4rem;
+backdrop-filter:blur(8px);
+}
+.stop-floating.visible{transform:translateX(-50%) translateY(0)}
+.stop-floating:hover{background:rgba(200,90,74,.25)}
+.stop-floating:active{transform:translateX(-50%) translateY(0) scale(.98)}
+
+body.has-floating-btn{padding-bottom:calc(9rem + var(--safe-bottom))}

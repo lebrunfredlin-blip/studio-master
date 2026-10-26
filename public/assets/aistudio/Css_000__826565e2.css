@@ -1,0 +1,158 @@
+/* ══════════════════════════════════════════════════════════════════
+   TUTORIEL JEU VIDÉO — Projecteur + flèche + bulles contextuelles
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ─── Overlay assombri ─── */
+.tour-overlay{
+position:fixed;inset:0;background:rgba(0,0,0,.75);
+z-index:4000;display:none;
+align-items:center;justify-content:center;
+padding:1.5rem;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+}
+.tour-overlay.visible{display:flex;animation:fadeIn .3s ease}
+
+/* ─── Projecteur (élément surligné) ─── */
+.tour-spotlight{
+position:fixed;z-index:4001;pointer-events:none;
+border-radius:12px;
+box-shadow:0 0 0 9999px rgba(0,0,0,.75), 0 0 24px 4px rgba(229,193,90,.6);
+transition:all .4s cubic-bezier(.2,.9,.3,1.2);
+display:none;
+}
+.tour-spotlight.visible{display:block;animation:spotlightPulse 2s ease-in-out infinite}
+@keyframes spotlightPulse{
+0%,100%{box-shadow:0 0 0 9999px rgba(0,0,0,.75), 0 0 24px 4px rgba(229,193,90,.6)}
+50%{box-shadow:0 0 0 9999px rgba(0,0,0,.75), 0 0 36px 8px rgba(229,193,90,.85)}
+}
+
+/* ─── Flèche animée ─── */
+.tour-arrow{
+position:fixed;z-index:4002;pointer-events:none;
+width:60px;height:60px;
+display:none;align-items:center;justify-content:center;
+font-size:2rem;color:var(--acc);
+filter:drop-shadow(0 0 8px rgba(229,193,90,.8));
+animation:arrowBounce 1.2s ease-in-out infinite;
+}
+.tour-arrow.visible{display:flex}
+@keyframes arrowBounce{
+0%,100%{transform:translateY(0) rotate(0deg)}
+50%{transform:translateY(-10px) rotate(0deg)}
+}
+.tour-arrow.arrow-up{animation:arrowBounceUp 1.2s ease-in-out infinite}
+@keyframes arrowBounceUp{
+0%,100%{transform:translateY(0)}
+50%{transform:translateY(10px)}
+}
+
+/* ─── Carte de tutoriel (message contextuel) ─── */
+.tour-card{
+background:var(--panel);border:1px solid var(--acc);
+border-radius:14px;padding:1.2rem 1.4rem;
+max-width:380px;width:100%;
+box-shadow:0 20px 60px rgba(0,0,0,.8), 0 0 0 1px rgba(229,193,90,.3);
+text-align:center;animation:cardIn .4s cubic-bezier(.2,.9,.3,1.2);
+}
+@keyframes cardIn{from{opacity:0;transform:translateY(20px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
+.tour-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem}
+.tour-step-badge{
+font-size:.7rem;font-family:var(--fm);color:var(--acc);
+background:rgba(229,193,90,.15);padding:.2rem .6rem;border-radius:12px;
+font-weight:700;letter-spacing:.08em;
+}
+.tour-skip-btn{
+background:transparent;border:none;color:var(--dim);
+font-size:.72rem;cursor:pointer;text-decoration:underline;
+padding:.2rem .4rem;
+}
+.tour-skip-btn:hover{color:var(--ink)}
+.tour-icon{font-size:2.5rem;margin-bottom:.6rem;animation:iconPop .6s ease}
+@keyframes iconPop{0%{transform:scale(0)}70%{transform:scale(1.15)}100%{transform:scale(1)}}
+.tour-title{
+font-size:1.1rem;font-weight:700;color:var(--ink);
+margin-bottom:.5rem;line-height:1.3;
+}
+.tour-text{
+font-size:.85rem;color:var(--dim);line-height:1.5;
+margin-bottom:1.1rem;
+}
+.tour-text strong{color:var(--acc)}
+.tour-actions{display:flex;gap:.5rem;justify-content:center}
+.tour-btn-prev{
+padding:.5rem 1rem;border-radius:8px;
+border:1px solid var(--border);background:transparent;color:var(--dim);
+font-size:.78rem;font-weight:600;cursor:pointer;
+}
+.tour-btn-prev:hover{color:var(--ink);border-color:var(--faint)}
+.tour-btn-prev:disabled{opacity:.3;cursor:not-allowed}
+.tour-btn-next{
+padding:.6rem 1.4rem;border-radius:8px;
+border:none;background:linear-gradient(135deg,var(--acc2),var(--acc));
+color:var(--bg);font-size:.85rem;font-weight:700;cursor:pointer;
+box-shadow:0 4px 12px rgba(229,193,90,.3);
+}
+.tour-btn-next:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(229,193,90,.4)}
+.tour-progress{
+display:flex;justify-content:center;gap:.4rem;margin-top:.9rem;
+}
+.tour-progress-dot{
+width:6px;height:6px;border-radius:50%;
+background:var(--faint);transition:all .2s;
+}
+.tour-progress-dot.active{background:var(--acc);width:18px;border-radius:3px}
+.tour-progress-dot.done{background:var(--acc);opacity:.5}
+
+/* ─── Bulle d'aide "?" à côté des options ─── */
+.help-bubble{
+display:inline-flex;align-items:center;justify-content:center;
+width:22px;height:22px;border-radius:50%;
+background:rgba(229,193,90,.15);color:var(--acc);
+font-size:.75rem;font-weight:700;
+cursor:pointer;border:1px solid rgba(229,193,90,.3);
+margin-left:.4rem;transition:all .15s;
+font-family:var(--fm);flex-shrink:0;
+}
+.help-bubble:hover{background:var(--acc);color:var(--bg);transform:scale(1.1)}
+.help-bubble:active{transform:scale(.94)}
+
+/* ─── Popover d'aide ─── */
+.help-popover{
+position:fixed;z-index:3500;
+background:var(--panel);
+border:1px solid var(--acc);border-radius:12px;
+padding:1rem 1.1rem;
+max-width:340px;width:calc(100% - 2rem);
+box-shadow:0 12px 40px rgba(0,0,0,.7), 0 0 0 1px rgba(229,193,90,.3);
+display:none;
+font-size:.82rem;line-height:1.5;
+color:var(--ink);
+}
+.help-popover.visible{display:block;animation:popoverIn .25s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes popoverIn{from{opacity:0;transform:translateY(-8px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+.help-popover-title{
+font-size:.85rem;font-weight:700;color:var(--acc);
+margin-bottom:.5rem;display:flex;align-items:center;gap:.4rem;
+}
+.help-popover-body{color:var(--dim);margin-bottom:.6rem}
+.help-popover-body strong{color:var(--ink)}
+.help-popover-example{
+background:rgba(229,193,90,.08);border-left:2px solid var(--acc);
+padding:.5rem .7rem;border-radius:0 6px 6px 0;
+font-size:.78rem;color:var(--acc);font-style:italic;
+margin-bottom:.6rem;
+}
+.help-popover-close{
+position:absolute;top:.5rem;right:.5rem;
+width:24px;height:24px;border-radius:50%;
+background:transparent;border:none;color:var(--faint);
+font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;
+}
+.help-popover-close:hover{color:var(--err)}
+
+/* ─── Aide flèche ─── */
+@media(max-width:480px){
+.tour-card{padding:1rem 1.1rem}
+.tour-title{font-size:1rem}
+.tour-icon{font-size:2rem}
+.help-popover{max-width:calc(100% - 1rem)}
+}

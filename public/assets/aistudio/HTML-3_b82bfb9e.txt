@@ -1,0 +1,837 @@
+<script>
+(function(){
+'use strict';
+
+// ══════════════════════════════════════════════════════════════════
+// RÉCUPÉRATION DE L'API EXPOSÉE PAR LE BLOC 2
+// ══════════════════════════════════════════════════════════════════
+const SM = window.__SM;
+if(!SM){
+  console.error('[Studio Master] Bloc 2 manquant');
+  alert('Erreur : le bloc 2 n\'a pas été chargé. Vérifie que les 3 blocs sont bien présents.');
+  return;
+}
+
+const {
+  state, MODES, WA_PALETTES,
+  $, esc, sleep, nowTime, setStatus, showToast,
+  isIOS, sanitizeForApi, safeLocalStorage,
+  consoleLog, clearConsole, copyConsole,
+  applyTheme, toggleTheme,
+  activateWakeLock, deactivateWakeLock,
+  refreshKeyPool, hasActiveKey, renderKeysStatus, updateApiPanel,
+  saveKeysFromUI, testApiKey, updateQuota,
+  apiFetch, extractJson,
+  renderModeGrid, selectMode, renderParams, updateLaunchButton,
+  fetchLfiNews, generateImage,
+  createVideoTask, pollVideo,
+  buildScriptPrompt, callChatCompletion,
+  buildFallbackScript, normalizeScript,
+  API_BASE, POLL_BASE, MODEL_TEXT, MODEL_IMAGE, MODEL_VIDEO, FRAME_RATE,
+  API_KEYS_STORAGE, THEME_STORAGE, VIDEO_FIRST_POLL_DELAY_SEC,
+  VIDEO_POLL_INTERVALS, VIDEO_MAX_POLL_ATTEMPTS
+} = SM;
+
+// ══════════════════════════════════════════════════════════════════
+// TTS
+// ══════════════════════════════════════════════════════════════════
+let ttsVoice = null;
+
+function initTTS(){
+  if(!('speechSynthesis' in window)) return;
+  const update = () => {
+    const voices = window.speechSynthesis.getVoices();
+    const fr = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith('fr'));
+    ttsVoice = fr.find(v => /premium|enhanced|amelie|thomas|audrey|marie/i.test(v.name)) || fr[0] || null;
+    if(ttsVoice) consoleLog('success','TTS','Voix : ' + ttsVoice.name);
+  };
+  update();
+  if(window.speechSynthesis.onvoiceschanged !== undefined){
+    window.speechSynthesis.onvoiceschanged = update;
+  }
+  setTimeout(update, 1000);
+}
+
+function speakFR(text){
+  if(!state.voiceEnabled || !text) return;
+  if(!('speechSynthesis' in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'fr-FR'; u.rate = 1.05; u.pitch = 1.0;
+    if(ttsVoice) u.voice = ttsVoice;
+    window.speechSynthesis.speak(u);
+  } catch(e){}
+}
+
+function stopTTS(){
+  try { if('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch(e){}
+}
+
+// ══════════════════════════════════════════════════════════════════
+// BUILD VIDEO PROMPT
+// ══════════════════════════════════════════════════════════════════
+function buildVideoPrompt(scene, script, palette, mode){
+  const char = scene.character || {};
+  const shots = scene.shots || [];
+  const shotText = shots.map((sh, i) =>
+    'SHOT ' + (i+1) + ' : ' +
+    (sh.camera ? sh.camera.type + ' / ' + sh.camera.movement + ' / ' + sh.camera.framing : 'symmetric shot') +
+    ' — ' + (sh.description || '')
+  ).join('\n');
+  const line = (scene.dialogue && scene.dialogue.line_fr) ? scene.dialogue.line_fr : '';
+
+  // Instruction spécifique pour les modes "tutoriels"
+  const tutorialBlock = mode && mode.promptTemplate
+    ? '\nSPECIFIC INSTRUCTION FOR THIS MODE : ' + mode.promptTemplate
+    : '';
+
+  return [
+    'A WES ANDERSON CINEMATIC SCENE — SHOT ON 35MM FILM.',
+    '',
+    '► PERFECT BILATERAL SYMMETRY, dead-center framing, planimetric staging, eye-level camera, locked-off or slow dolly-in.',
+    '► HARD CUTS between shots (no dissolves). Shot-reverse-shot for dialogue exchanges.',
+    '► 35MM FILM STOCK : visible grain, warm halation, soft contrast, slight magenta/gold cast.',
+    '► COLOR PALETTE : ' + palette.label + ' → ' + palette.colors.join(', ') + '. No neon.',
+    '► CHARACTER : ' + (char.name || 'kitten') + ' — ' + (char.physical_description || 'cute kawaii humanoid kitten with retro motorcycle helmet and pastel Shaolin kimono') + '.',
+    '► ACTING : deadpan, no smiling.',
+    tutorialBlock,
+    '',
+    'SCENE ' + scene.scene_number + ' — ' + (scene.type || 'scene').toUpperCase(),
+    'DECOR : ' + (scene.decor || 'pastel symmetric set'),
+    'ACTION : ' + (scene.action || 'the kitten speaks to camera'),
+    line ? 'SPOKEN LINE (French) : "' + line + '"' : '',
+    '',
+    'MONTAGE — ' + shots.length + ' SHOTS WITH HARD CUTS :',
+    shotText,
+    '',
+    'CONSTRAINTS : 35mm grain, hard cuts, perfect symmetry, pastel palette, no text, no subtitles, no watermarks.'
+  ].filter(Boolean).join('\n');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RENDER SCRIPT
+// ══════════════════════════════════════════════════════════════════
+function renderScript(script){
+  const view = $('script-view');
+  if(!view) return;
+  let html = '';
+  html += '<div style="font-size:clamp(.85rem,3vw,1rem);color:var(--acc);font-weight:600;margin-bottom:.4rem;">📖 ' + esc(script.title) + '</div>';
+  html += '<div style="font-style:italic;color:var(--dim);margin-bottom:.8rem;">' + esc(script.logline) + '</div>';
+  html += '<div style="font-size:clamp(.6rem,2.2vw,.72rem);color:var(--faint);margin-bottom:.8rem;padding-bottom:.6rem;border-bottom:1px dashed var(--border);">Personnages : ' +
+    script.characters.map(c => esc(c.name) + ' (' + esc(c.chat_face||'') + ')').join(' · ') + '</div>';
+  script.scenes.forEach(sc => {
+    html += '<div style="margin-bottom:.7rem;padding-left:.7rem;border-left:2px solid var(--acc);">';
+    html += '<div style="font-size:clamp(.6rem,2.2vw,.72rem);color:var(--acc);font-weight:600;text-transform:uppercase;letter-spacing:.1em;">🎬 Scène ' + sc.scene_number + ' · ' + esc(sc.type||'scene') + '</div>';
+    if(sc.character) html += '<div style="font-size:clamp(.68rem,2.4vw,.78rem);color:var(--ink);margin-top:.2rem;"><strong>' + esc(sc.character.name||'') + '</strong> — ' + esc(sc.character.physical_description||'') + '</div>';
+    if(sc.decor) html += '<div style="font-size:clamp(.66rem,2.3vw,.76rem);color:var(--dim);margin-top:.15rem;">Décor : ' + esc(sc.decor) + '</div>';
+    if(sc.dialogue && sc.dialogue.line_fr) html += '<div style="font-size:clamp(.68rem,2.4vw,.78rem);color:#f0d78a;font-style:italic;margin-top:.2rem;">🔊 « ' + esc(sc.dialogue.line_fr) + ' »</div>';
+    if(sc.text_overlay_fr) html += '<div style="font-size:clamp(.6rem,2.2vw,.7rem);color:#e8a87c;margin-top:.15rem;">📺 ' + esc(sc.text_overlay_fr) + '</div>';
+    if(Array.isArray(sc.shots) && sc.shots.length){
+      html += '<div style="font-size:clamp(.6rem,2.1vw,.7rem);color:var(--dim);margin-top:.25rem;padding:.3rem .5rem;background:rgba(255,255,255,.02);border-radius:3px;">🎞️ Montage ' + sc.shots.length + ' plans : ' +
+        sc.shots.map((sh,i) => 'P' + (i+1) + ' ' + (sh.camera ? sh.camera.type : '')).join(' → ') + '</div>';
+    }
+    html += '</div>';
+  });
+  view.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RENDER VIDEOS (incrémental + FIX #2)
+// ══════════════════════════════════════════════════════════════════
+function renderVideos(){
+  const grid = $('videos-grid');
+  if(!grid) return;
+
+  while(grid.children.length > state.videos.length) grid.removeChild(grid.lastChild);
+  for(let i = grid.children.length; i < state.videos.length; i++){
+    const card = document.createElement('div');
+    card.className = 'scene-card';
+    card.dataset.index = String(i);
+    card.dataset.status = '';
+    card.dataset.url = '';
+    card.dataset.progress = '';
+    card.innerHTML = '<div class="scene-card-header"><span class="scene-card-title">🎬 Scène ' + (i+1) + '</span><span class="scene-card-status"></span></div><div class="scene-card-body"></div>';
+    grid.appendChild(card);
+  }
+
+  const mode = state.activeMode;
+  const ratio = mode ? mode.ratio : '9:16';
+
+  state.videos.forEach((v, i) => {
+    const card = grid.children[i];
+    if(!card) return;
+    const titleEl = card.querySelector('.scene-card-title');
+    const statusEl = card.querySelector('.scene-card-status');
+    const bodyEl = card.querySelector('.scene-card-body');
+
+    const titleText = '🎬 Scène ' + (i+1) + (v.type ? ' · ' + v.type : '');
+    if(titleEl.textContent !== titleText) titleEl.textContent = titleText;
+
+    const newClass = 'scene-card ' + (v.status === 'done' ? 'done' : v.status === 'error' ? 'error' : 'generating');
+    if(card.className !== newClass) card.className = newClass;
+
+    if(v.status === 'done' && v.url){
+      if(card.dataset.url !== v.url){
+        statusEl.innerHTML = '<span style="color:var(--ok);">✓</span>';
+        bodyEl.innerHTML = '';
+        const video = document.createElement('video');
+        video.src = v.url;
+        video.controls = true;
+        video.preload = 'metadata';
+        video.playsInline = true;
+        video.setAttribute('playsinline', '');
+        video.setAttribute('webkit-playsinline', '');
+        video.muted = true;
+        if(ratio === '16:9') video.dataset.ratio = '16:9';
+        bodyEl.appendChild(video);
+        const dl = document.createElement('a');
+        dl.className = 'scene-download';
+        dl.href = v.url;
+        dl.target = '_blank';
+        dl.rel = 'noopener noreferrer';
+        dl.textContent = '⬇ Télécharger';
+        bodyEl.appendChild(dl);
+        card.dataset.url = v.url;
+      }
+    } else if(v.status === 'error'){
+      statusEl.innerHTML = '<span style="color:var(--err);">✕</span>';
+      bodyEl.innerHTML = '<div class="scene-placeholder" style="color:var(--err);">' + esc(v.error || 'Erreur') + '</div>';
+      card.dataset.progress = '';
+    } else {
+      statusEl.innerHTML = '<span class="spinner-mini"></span>';
+      const progressTxt = v.progress || 'En attente…';
+      if(card.dataset.progress !== progressTxt){   // FIX #2
+        bodyEl.innerHTML = '<div class="scene-placeholder"><div class="spinner-mini"></div><span>' + esc(progressTxt) + '</span></div>';
+        card.dataset.progress = progressTxt;
+      }
+    }
+    card.dataset.status = v.status || '';
+  });
+
+  const badge = $('videos-count');
+  if(badge) badge.textContent = state.videos.filter(v => v.status === 'done').length + '/' + state.videos.length;
+  const playerBadge = $('player-badge');
+  if(playerBadge) playerBadge.textContent = state.videos.filter(v => v.status === 'done').length;
+
+  // Activer le bouton player si au moins une vidéo
+  const hasVideos = state.videos.filter(v => v.status === 'done').length > 0;
+  const playBtn = $('play-film-btn'), replayBtn = $('replay-btn');
+  if(playBtn) playBtn.disabled = !hasVideos || state.isGeneratingVideos;
+  if(replayBtn) replayBtn.disabled = !hasVideos || state.isGeneratingVideos;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// GENERATION VIDÉOS — MULTI-WORKERS
+// ══════════════════════════════════════════════════════════════════
+async function generateAllVideos(script, mode, palette){
+  state.isGeneratingVideos = true;
+  state.videos = [];
+  const scenes = script.scenes.slice(0, mode.scenes);
+  scenes.forEach(sc => state.videos.push({ status:'pending', url:null, type:sc.type, progress:'En attente…' }));
+  renderVideos();
+
+  const workerCount = Math.max(1, state.keyPool.filter(k => k.active).length);
+  consoleLog('info','WORKERS', workerCount + ' worker(s) pour ' + scenes.length + ' scènes');
+
+  const queue = scenes.map((scene, index) => ({ scene, index }));
+  const workers = [];
+  for(let w = 0; w < workerCount; w++){
+    workers.push(videoWorker(w, queue, script, palette, mode));
+  }
+  await Promise.all(workers);
+  state.isGeneratingVideos = false;
+  renderVideos();
+}
+
+async function videoWorker(workerId, queue, script, palette, mode){
+  while(queue.length > 0 && !state.stopRequested){
+    const task = queue.shift();
+    if(!task) break;
+    await generateOneVideo(task.scene, task.index, script, palette, mode, workerId);
+  }
+}
+
+async function generateOneVideo(scene, index, script, palette, mode, workerId){
+  if(state.stopRequested) return;
+  const prompt = buildVideoPrompt(scene, script, palette, mode);
+  state.videos[index].status = 'loading';
+  state.videos[index].progress = 'Initialisation…';
+  renderVideos();
+
+  const numFrames = mode.duration * FRAME_RATE + 1;
+  const charName = (scene.character && scene.character.name) || '?';
+  consoleLog('ai','W' + (workerId+1) + ' SCÈNE ' + (index+1), '[' + charName + '] ' + mode.duration + 's (' + numFrames + ' frames)');
+
+  try {
+    const videoIdObj = await createVideoTask(prompt, null, numFrames);
+    const videoUrl = await pollVideo(videoIdObj, (prog) => {
+      state.videos[index].progress = prog;
+      renderVideos();
+    });
+    state.videos[index] = { status:'done', url:videoUrl, type:scene.type || 'scene' };
+    renderVideos();
+    consoleLog('success','SCÈNE ' + (index+1), 'Terminée');
+  } catch(e){
+    if(e.message === 'Arrêt demandé') return;
+    state.videos[index] = { status:'error', url:null, type:scene.type || 'scene', error:e.message };
+    renderVideos();
+    consoleLog('error','SCÈNE ' + (index+1), e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PIPELINE PRINCIPAL
+// ══════════════════════════════════════════════════════════════════
+async function runPipeline(){
+  if(state.isRunning) return;
+  if(!hasActiveKey()){ showToast('Ajoutez au moins une clé API', 'error'); return; }
+  if(!state.activeMode){ showToast('Sélectionnez un mode', 'error'); return; }
+  const subject = ($('subject-input').value || '').trim();
+  if(subject.length < 5){ showToast('Saisissez un sujet (5 car. min)', 'error'); return; }
+
+  state.isRunning = true;
+  state.stopRequested = false;
+  state.script = null;
+  state.videos = [];
+  state.workingPollUrlBuilder = null;
+  $('stop-btn').classList.add('visible');
+  $('launch-btn').disabled = true;
+  $('section-script').classList.add('hidden');
+  $('section-videos').classList.add('hidden');
+  $('section-player').classList.add('hidden');
+  $('videos-grid').innerHTML = '';
+  $('script-view').textContent = '';
+
+  const mode = state.activeMode;
+  const palette = state.palette;
+  const nKeys = state.keyPool.filter(k => k.active).length;
+
+  consoleLog('success','START','Mode #' + mode.n + ' · ' + mode.name + ' · ' + mode.scenes + ' scènes × ' + mode.duration + 's · ' + nKeys + ' worker(s)');
+  setStatus('Initialisation…');
+  await activateWakeLock();
+
+  // Débloquer TTS iOS
+  if(isIOS && 'speechSynthesis' in window){
+    try {
+      const u0 = new SpeechSynthesisUtterance(' ');
+      u0.volume = 0;
+      window.speechSynthesis.speak(u0);
+    } catch(e){}
+  }
+
+  try {
+    let newsItems = [];
+    if(mode.newsSource === 'lfi'){
+      consoleLog('info','NEWS','Récupération des actualités LFI…');
+      setStatus('Récupération des actualités…');
+      newsItems = await fetchLfiNews();
+      consoleLog('success','NEWS', newsItems.length + ' actualités chargées');
+    }
+
+    setStatus('Écriture du scénario…');
+    consoleLog('ai','SCÉNARIO','Génération (' + mode.scenes + ' scènes)…');
+    const prompt = buildScriptPrompt(mode, subject, palette, newsItems);
+    let script = null;
+
+    for(let attempt = 1; attempt <= 2; attempt++){
+      try {
+        const content = await callChatCompletion(
+          'Tu es scénariste. Retourne UNIQUEMENT un JSON strict. Pas de markdown. Toutes les chaînes sur UNE LIGNE.',
+          prompt, 'Scénario (essai ' + attempt + ')', 8000, attempt === 1 ? 0.7 : 0.3
+        );
+        if(content){
+          const parsed = extractJson(content);
+          if(parsed && parsed.scenes && Array.isArray(parsed.scenes)){
+            script = normalizeScript(parsed, mode, subject, palette, newsItems);
+            if(script){
+              consoleLog('success','SCÉNARIO','JSON valide à la tentative ' + attempt);
+              break;
+            }
+          }
+        }
+        consoleLog('warn','SCÉNARIO','Tentative ' + attempt + ' échouée');
+      } catch(e){
+        consoleLog('error','SCÉNARIO','Tentative ' + attempt + ' : ' + e.message);
+      }
+    }
+
+    if(!script){
+      consoleLog('warn','SCÉNARIO','Fallback programmatique');
+      script = buildFallbackScript(mode, subject, palette, newsItems);
+      script = normalizeScript(script, mode, subject, palette, newsItems);
+    }
+    if(!script) throw new Error('Impossible de générer un scénario');
+
+    state.script = script;
+    renderScript(script);
+    $('section-script').classList.remove('hidden');
+    $('section-script').classList.add('open');
+    $('script-badge').textContent = script.scenes.length + ' scènes';
+    await sleep(400);
+
+    setStatus('Génération des vidéos…');
+    consoleLog('ai','VIDÉOS','Génération de ' + script.scenes.length + ' vidéos…');
+    $('section-videos').classList.remove('hidden');
+    $('section-videos').classList.add('open');
+    await generateAllVideos(script, mode, palette);
+
+    const done = state.videos.filter(v => v.status === 'done').length;
+    consoleLog('success','FIN', done + '/' + script.scenes.length + ' vidéos prêtes');
+    $('section-player').classList.remove('hidden');
+    $('section-player').classList.add('open');
+    setStatus('✦ Terminé — ' + done + '/' + script.scenes.length + ' vidéos ✦');
+    await sleep(2500);
+    setStatus(null);
+    showToast(done + ' vidéo(s) générée(s) ✓', 'success', 3000);
+  } catch(e){
+    if(e.message === 'Arrêt demandé'){
+      consoleLog('warn','STOP','Arrêt demandé');
+      setStatus('Arrêté.');
+    } else {
+      consoleLog('error','PIPELINE', e.message);
+      setStatus('Erreur : ' + e.message.slice(0, 80));
+      showToast('Erreur : ' + e.message.slice(0, 60), 'error', 4000);
+    }
+    await sleep(1500);
+    setStatus(null);
+  }
+
+  state.isRunning = false;
+  state.stopRequested = false;
+  $('stop-btn').classList.remove('visible');
+  updateLaunchButton();
+  await deactivateWakeLock();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PLAYER CANVAS
+// ══════════════════════════════════════════════════════════════════
+async function playFilm(){
+  const ready = state.videos.filter(v => v.status === 'done' && v.url);
+  if(ready.length === 0){ showToast('Aucune vidéo à lire', 'error'); return; }
+  if(state.isPlayingFilm) return;
+  state.isPlayingFilm = true;
+
+  const overlay = $('player-overlay');
+  const canvas = $('player-canvas');
+  const hint = $('player-hint-overlay');
+  if(!overlay || !canvas) return;
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssW = window.innerWidth, cssH = window.innerHeight;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  const ctx = canvas.getContext('2d');
+
+  overlay.classList.add('visible');
+  hint.classList.remove('hidden');
+  setTimeout(() => hint.classList.add('hidden'), 3000);
+
+  try {
+    if('speechSynthesis' in window){
+      const u0 = new SpeechSynthesisUtterance(' ');
+      u0.volume = 0;
+      window.speechSynthesis.speak(u0);
+    }
+  } catch(e){}
+
+  const script = state.script || { scenes: [] };
+  const scenes = script.scenes || [];
+  const readyWithScene = ready.map(v => {
+    const origIdx = state.videos.indexOf(v);
+    return { video: v, scene: scenes[origIdx] || {} };
+  });
+
+  for(let i = 0; i < readyWithScene.length; i++){
+    if(!state.isPlayingFilm) break;
+    const { video, scene } = readyWithScene[i];
+    await playOneScene(video, scene, ctx, canvas, dpr);
+  }
+
+  stopFilmPlayback();
+}
+
+function playOneScene(videoObj, scene, ctx, canvas, dpr){
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.src = videoObj.url;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.muted = true;
+    let ttsFired = false, finished = false;
+
+    const finish = () => { if(finished) return; finished = true; resolve(); };
+
+    const startTTS = () => {
+      if(ttsFired) return;
+      ttsFired = true;
+      const line = (scene.dialogue && scene.dialogue.line_fr) || scene.text_overlay_fr || '';
+      if(line) speakFR(line);
+    };
+
+    const ttsGuard = setTimeout(() => startTTS(), 2000);
+
+    const drawOverlay = (w, h) => {
+      const t = video.currentTime || 0;
+      const dur = video.duration || 8;
+      let alpha = 1;
+      if(t < 0.4) alpha = t/0.4;
+      else if(dur - t < 0.5) alpha = Math.max(0, (dur - t)/0.5);
+      if(alpha <= 0) return;
+      const pad = Math.round(Math.min(30*dpr, w*0.03));
+      const bandH = Math.round(Math.min(96*dpr, h*0.16));
+      const bandY = h - bandH - pad;
+      const bandX = pad;
+      const bandW = w - pad*2;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      const grad = ctx.createLinearGradient(bandX, bandY, bandX, bandY + bandH);
+      grad.addColorStop(0, 'rgba(10,10,18,0)');
+      grad.addColorStop(0.35, 'rgba(10,10,18,0.85)');
+      grad.addColorStop(1, 'rgba(10,10,18,0.95)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(bandX, bandY, bandW, bandH);
+      ctx.fillStyle = '#e5c15a';
+      ctx.fillRect(bandX, bandY + Math.round(bandH*0.15), Math.round(5*dpr), bandH - Math.round(bandH*0.3));
+      const speaker = (scene.dialogue && scene.dialogue.speaker) || (scene.character && scene.character.name) || '';
+      const nameSize = Math.round(Math.min(15*dpr, h*0.022));
+      const textSize = Math.round(Math.min(22*dpr, h*0.032));
+      if(speaker){
+        ctx.fillStyle = '#e5c15a';
+        ctx.font = '700 ' + nameSize + 'px -apple-system, BlinkMacSystemFont, Helvetica, Arial';
+        ctx.textBaseline = 'top';
+        ctx.fillText(speaker.toUpperCase(), bandX + Math.round(bandH*0.22), bandY + Math.round(bandH*0.18));
+      }
+      const overlayText = scene.text_overlay_fr || (scene.dialogue && scene.dialogue.line_fr) || '';
+      if(overlayText){
+        ctx.fillStyle = '#f5f0e1';
+        ctx.font = '500 ' + textSize + 'px -apple-system, BlinkMacSystemFont, Helvetica, Arial';
+        ctx.textBaseline = 'top';
+        let txt = overlayText;
+        const maxW = bandW - Math.round(bandH*0.4);
+        while(ctx.measureText(txt).width > maxW && txt.length > 4) txt = txt.slice(0, -4) + '…';
+        ctx.fillText(txt, bandX + Math.round(bandH*0.22), bandY + Math.round(bandH*0.5));
+      }
+      ctx.restore();
+    };
+
+    const draw = () => {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+      const ar = vw/vh, car = canvas.width/canvas.height;
+      let dw, dh, dx, dy;
+      if(ar > car){ dw = canvas.width; dh = canvas.width/ar; dx = 0; dy = (canvas.height - dh)/2; }
+      else { dh = canvas.height; dw = canvas.height*ar; dx = (canvas.width - dw)/2; dy = 0; }
+      try { ctx.drawImage(video, dx, dy, dw, dh); } catch(e){}
+      drawOverlay(canvas.width, canvas.height);
+    };
+
+    const loop = () => {
+      if(!state.isPlayingFilm || video.paused || video.ended){ clearTimeout(ttsGuard); finish(); return; }
+      draw();
+      state.playRAF = requestAnimationFrame(loop);
+    };
+
+    video.onloadedmetadata = () => {
+      clearTimeout(ttsGuard);
+      startTTS();
+      video.play().then(() => loop()).catch(() => { startTTS(); finish(); });
+    };
+    video.oncanplay = () => startTTS();
+    video.onended = () => { clearTimeout(ttsGuard); finish(); };
+    video.onerror = () => { startTTS(); clearTimeout(ttsGuard); finish(); };
+    video.load();
+  });
+}
+
+function stopFilmPlayback(){
+  state.isPlayingFilm = false;
+  if(state.playRAF) cancelAnimationFrame(state.playRAF);
+  state.playRAF = null;
+  stopTTS();
+  const overlay = $('player-overlay');
+  if(overlay) overlay.classList.remove('visible');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// EXPORT ZIP (via JSZip CDN chargé dynamiquement)
+// ══════════════════════════════════════════════════════════════════
+async function exportZip(){
+  const ready = state.videos.filter(v => v.status === 'done' && v.url);
+  if(ready.length === 0){ showToast('Aucune vidéo à exporter', 'error'); return; }
+
+  showToast('Chargement de JSZip…', 'warn', 2000);
+  try {
+    // Charger JSZip depuis CDN
+    if(typeof JSZip === 'undefined'){
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    const zip = new JSZip();
+    const folder = zip.folder('studio-master-' + (state.activeMode ? state.activeMode.n : 'export'));
+
+    // Scénario JSON
+    if(state.script){
+      folder.file('scenario.json', JSON.stringify(state.script, null, 2));
+    }
+
+    // Vidéos
+    for(let i = 0; i < ready.length; i++){
+      const v = ready[i];
+      showToast('Téléchargement ' + (i+1) + '/' + ready.length, 'warn', 1500);
+      try {
+        const res = await fetch(v.url);
+        if(!res.ok) throw new Error('HTTP ' + res.status);
+        const blob = await res.blob();
+        const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+        folder.file('scene-' + String(i+1).padStart(2, '0') + '.' + ext, blob);
+      } catch(e){
+        consoleLog('warn','ZIP','Scène ' + (i+1) + ' échouée : ' + e.message);
+      }
+    }
+
+    // Manifest
+    folder.file('manifest.txt',
+      'Studio Master v2.0\n' +
+      'Mode : #' + (state.activeMode ? state.activeMode.n : '—') + ' · ' + (state.activeMode ? state.activeMode.name : '—') + '\n' +
+      'Sujet : ' + (state.subject || '—') + '\n' +
+      'Palette : ' + (state.palette ? state.palette.label : '—') + '\n' +
+      'Date : ' + new Date().toISOString() + '\n' +
+      'Vidéos : ' + ready.length + '\n'
+    );
+
+    const content = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    const url = URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'studio-master-' + (state.activeMode ? state.activeMode.n : 'export') + '-' + Date.now() + '.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    showToast('ZIP exporté ✓', 'success', 3000);
+    consoleLog('success','ZIP', ready.length + ' vidéos + scénario exportés');
+  } catch(e){
+    showToast('Export ZIP impossible : ' + e.message.slice(0, 40), 'error', 4000);
+    consoleLog('error','ZIP', e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PWA
+// ══════════════════════════════════════════════════════════════════
+let deferredPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = $('install-btn');
+  if(btn){
+    btn.disabled = false;
+    btn.textContent = '📲 Installer';
+  }
+  consoleLog('info','PWA','Installation disponible');
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  const btn = $('install-btn');
+  if(btn){
+    btn.classList.add('installed');
+    btn.textContent = '✅ Installé';
+    btn.disabled = true;
+  }
+  showToast('Application installée ✓', 'success', 3000);
+  consoleLog('success','PWA','Application installée');
+});
+
+async function installPWA(){
+  const btn = $('install-btn');
+  if(!deferredPrompt){
+    // iOS : explication manuelle
+    if(isIOS){
+      showToast('Sur iOS : Partager → Sur l\'écran d\'accueil', 'warn', 5000);
+    } else {
+      showToast('Installation non disponible', 'warn', 3000);
+    }
+    return;
+  }
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  consoleLog('info','PWA','Choix : ' + outcome);
+  deferredPrompt = null;
+  if(btn){
+    btn.textContent = '📲 Installer';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// HELP
+// ══════════════════════════════════════════════════════════════════
+function showHelp(){
+  const help = [
+    'STUDIO MASTER v2.0 — AIDE',
+    '',
+    '1. Collez une ou plusieurs clés API Agnes (une par ligne)',
+    '2. Cliquez "Tester la clé" pour vérifier',
+    '3. Sélectionnez un mode parmi les 90',
+    '4. Saisissez un sujet (5 caractères minimum)',
+    '5. Cliquez "Lancer la génération"',
+    '',
+    'Temps moyen : 3 à 10 minutes selon le nombre de scènes',
+    'et le nombre de clés API (N clés = N vidéos en parallèle)',
+    '',
+    'Astuces :',
+    '• Plus de clés = plus rapide',
+    '• Le mode clair/sombre suit votre système',
+    '• Bouton "Exporter ZIP" pour récupérer tous les médias',
+    '• "Installer" pour avoir l\'app sur l\'écran d\'accueil',
+    '',
+    'Raccourcis :',
+    '• Échap : quitter le player',
+    '• Ctrl+Entrée : enregistrer la clé',
+    '',
+    'Clés gratuites : platform.agnes-ai.com'
+  ].join('\n');
+  alert(help);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════════
+(function init(){
+  // TTS
+  try { initTTS(); } catch(e){}
+
+  // Keys
+  try { refreshKeyPool(); } catch(e){}
+  try { updateApiPanel(); } catch(e){}
+  try { updateQuota(); } catch(e){}
+
+  // Modes
+  try { renderModeGrid(); } catch(e){}
+  try { $('section-mode').classList.add('open'); } catch(e){}   // FIX #3
+  try { selectMode(941); } catch(e){ consoleLog('error','INIT','selectMode: ' + e.message); }
+  try { updateLaunchButton(); } catch(e){}
+
+  // Theme
+  const savedTheme = safeLocalStorage.get(THEME_STORAGE) || 'auto';
+  applyTheme(savedTheme);
+
+  // Boutons API
+  const saveBtn = $('api-save-btn');
+  if(saveBtn) saveBtn.addEventListener('click', saveKeysFromUI);
+  const testBtn = $('api-test-btn');
+  if(testBtn) testBtn.addEventListener('click', testApiKey);
+  const keysInput = $('api-keys-input');
+  if(keysInput){
+    keysInput.addEventListener('keydown', e => {
+      if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); saveKeysFromUI(); }
+    });
+  }
+
+  // Sections collapsibles
+  document.querySelectorAll('[data-toggle]').forEach(h => {
+    h.addEventListener('click', () => {
+      const el = $(h.dataset.toggle);
+      if(el) el.classList.toggle('open');
+    });
+  });
+
+  // Sujet
+  const subjectInput = $('subject-input');
+  if(subjectInput) subjectInput.addEventListener('input', updateLaunchButton);
+  const exampleBtn = $('subject-example-btn');
+  if(exampleBtn) exampleBtn.addEventListener('click', () => {
+    const examples = [
+      'La France insoumise et les mobilisations lycéennes',
+      'Un chaton détective enquête dans un Paris rétrofuturiste',
+      'Un chaton astronaute découvre une planète pastel',
+      'La campagne municipale de La France insoumise à Roubaix',
+      'Un chaton cowboy traverse un désert de pastel',
+      'Un film noir avec un chaton détective dans les années 50'
+    ];
+    if(subjectInput){
+      subjectInput.value = examples[Math.floor(Math.random() * examples.length)];
+      state.subject = subjectInput.value;
+      updateLaunchButton();
+    }
+  });
+
+  // Launch / Stop
+  const launchBtn = $('launch-btn');
+  if(launchBtn) launchBtn.addEventListener('click', runPipeline);
+  const stopBtn = $('stop-btn');
+  if(stopBtn) stopBtn.addEventListener('click', () => {
+    state.stopRequested = true;
+    stopTTS();
+    consoleLog('warn','STOP','Arrêt demandé');
+    setStatus('Arrêt en cours…');
+  });
+
+  // Player
+  const playBtn = $('play-film-btn');
+  if(playBtn) playBtn.addEventListener('click', playFilm);
+  const replayBtn = $('replay-btn');
+  if(replayBtn) replayBtn.addEventListener('click', playFilm);
+  const overlay = $('player-overlay');
+  if(overlay) overlay.addEventListener('click', stopFilmPlayback);
+  document.addEventListener('keydown', e => {
+    if(e.key === 'Escape' && state.isPlayingFilm) stopFilmPlayback();
+  });
+
+  // Voice toggle
+  const voiceToggle = $('voice-toggle');
+  if(voiceToggle) voiceToggle.addEventListener('change', e => {
+    state.voiceEnabled = e.target.checked;
+    if(!state.voiceEnabled) stopTTS();
+  });
+
+  // Console
+  const clearBtn = $('console-clear-btn');
+  if(clearBtn) clearBtn.addEventListener('click', clearConsole);
+  const copyBtn = $('console-copy-btn');
+  if(copyBtn) copyBtn.addEventListener('click', copyConsole);
+
+  // Export ZIP
+  const zipBtn = $('export-zip-btn');
+  if(zipBtn) zipBtn.addEventListener('click', exportZip);
+
+  // Header actions
+  const installBtn = $('install-btn');
+  if(installBtn) installBtn.addEventListener('click', installPWA);
+  const themeBtn = $('theme-toggle-btn');
+  if(themeBtn) themeBtn.addEventListener('click', toggleTheme);
+  const helpBtn = $('help-btn');
+  if(helpBtn) helpBtn.addEventListener('click', showHelp);
+
+  // Refresh UI périodique
+  setInterval(() => { if(state.videos.length > 0) renderVideos(); }, 2000);
+  setInterval(renderKeysStatus, 1000);
+  setInterval(updateQuota, 5000);
+
+  // Messages init
+  consoleLog('success','INIT','Studio Master v2.0 prêt · ' + MODES.length + ' modes disponibles');
+  consoleLog('info','INIT','iOS détecté : ' + (isIOS ? 'oui (TTS nécessite un tap)' : 'non'));
+  consoleLog('info','INIT','Thème : ' + state.theme);
+  consoleLog('info','INIT','Sélectionnez un mode, saisissez un sujet, cliquez Lancer.');
+
+  // Sujet par défaut
+  if(subjectInput && !subjectInput.value){
+    subjectInput.value = '';
+  }
+})();
+
+})();
+</script>

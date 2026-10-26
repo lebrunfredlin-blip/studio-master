@@ -1,0 +1,1 @@
+showToast(valid.length > 0 ? valid.length + ' compte(s) connecté(s) ✓' : 'Aucun code valide', valid.length > 0 ? 'success' : 'warn');

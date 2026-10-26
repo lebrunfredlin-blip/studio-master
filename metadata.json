@@ -1,0 +1,6 @@
+{
+  "name": "WG clip",
+  "description": "Studio Master v2.0 — 90 applications IA universelles · TikTok · Films · Séries · Pool multi-clés · Parser 5-stratégies · Player Canvas · TTS FR",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

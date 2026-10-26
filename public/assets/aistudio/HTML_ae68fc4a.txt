@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>STUDIO MASTER — 90 Applications · TikTok · Films · Séries</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+--bg:#0a0a12;--bg2:#12121c;--bg3:#1a1a28;
+--panel:#16161f;--border:#2a2a3a;
+--ink:#e8e6e0;--dim:#8a8896;--faint:#4a4858;
+--acc:#e5c15a;--acc2:#e87b35;--acc3:#8b5fc4;
+--ok:#4a9d6a;--err:#c85a4a;--warn:#d4a017;
+--r:6px;--fm:ui-monospace,'SF Mono',Menlo,monospace;
+--fs:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
+}
+html,body{background:var(--bg)}
+body{font-family:var(--fs);background:var(--bg);color:var(--ink);min-height:100vh;padding:1rem 1rem 26rem;font-size:14px;line-height:1.55;max-width:1200px;margin:0 auto}
+header{text-align:center;padding:.8rem 0 1.2rem;margin-bottom:1rem;position:relative}
+header::after{content:'';position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:180px;height:1px;background:linear-gradient(90deg,transparent,var(--acc),transparent);opacity:.5}
+h1{font-size:1.7rem;font-weight:300;background:linear-gradient(135deg,var(--acc2),var(--acc),var(--acc3));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:.02em}
+.subtitle{font-size:.78rem;color:var(--dim);font-style:italic;margin-top:.3rem}
+.badge-top{display:inline-block;padding:.15rem .55rem;background:rgba(229,193,90,.1);border:1px solid var(--acc);border-radius:2px;font-size:.6rem;letter-spacing:.15em;color:var(--acc);font-weight:600;margin-bottom:.4rem}
+
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:1rem 1.2rem;margin-bottom:.9rem}
+.panel.ok{box-shadow:inset 3px 0 0 var(--ok)}
+.label{display:block;font-size:.68rem;color:var(--dim);margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.15em;font-weight:600}
+input[type=password],input[type=text],textarea,select{width:100%;padding:.7rem .9rem;border-radius:var(--r);border:1px solid var(--border);background:var(--bg2);color:var(--ink);font-family:var(--fm);font-size:.78rem;margin-bottom:.5rem}
+textarea{font-family:var(--fs);font-size:.85rem;line-height:1.5;resize:vertical;min-height:70px}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
+select{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%23e5c15a' d='M0 0l5 6 5-6z'/></svg>");background-repeat:no-repeat;background-position:right .9rem center;background-size:10px;font-family:var(--fs);font-size:.85rem}
+
+.btn{width:100%;padding:.8rem 1.1rem;border-radius:var(--r);border:1px solid var(--border);background:var(--bg2);color:var(--ink);font-size:.82rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;margin-bottom:.6rem;transition:all .2s;font-family:inherit}
+.btn:hover:not(:disabled){background:var(--bg3);border-color:var(--acc)}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn-primary{border-color:var(--acc);background:linear-gradient(135deg,rgba(232,123,53,.2),rgba(229,193,90,.15));color:var(--acc);font-size:1rem;padding:1.1rem;letter-spacing:.2em}
+.btn-stop{border-color:var(--err);color:var(--err);background:transparent;display:none}
+.btn-stop.visible{display:block}
+.btn-mini{width:auto;padding:.4rem .8rem;font-size:.68rem;letter-spacing:.08em;margin-bottom:0;display:inline-block}
+
+.status{font-size:.72rem;padding:.55rem .85rem;border-radius:var(--r);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem;background:var(--bg2);color:var(--dim);border:1px solid var(--border);font-family:var(--fm)}
+.status.ok{background:rgba(74,157,106,.08);color:var(--ok);border-color:rgba(74,157,106,.3)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--faint);flex-shrink:0}
+.status.ok .dot{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.hint{font-size:.7rem;color:var(--dim);margin-top:.4rem}
+.hint a{color:var(--acc);text-decoration:none}
+
+/* MODE SELECTOR */
+.mode-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.4rem;max-height:320px;overflow-y:auto;padding:.4rem;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r)}
+.mode-cat{grid-column:1/-1;font-size:.62rem;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.15em;padding:.5rem 0 .2rem;border-bottom:1px solid var(--border);margin-top:.3rem}
+.mode-cat:first-child{margin-top:0;border-bottom:none}
+.mode-card{padding:.5rem .6rem;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--dim);cursor:pointer;font-size:.72rem;transition:all .15s;text-align:center}
+.mode-card:hover{border-color:var(--acc);color:var(--ink)}
+.mode-card.active{border-color:var(--acc);background:rgba(229,193,90,.1);color:var(--acc);font-weight:600}
+.mode-card .mode-num{display:block;font-family:var(--fm);font-size:.6rem;opacity:.7;margin-bottom:.1rem}
+.mode-card .mode-name{display:block;line-height:1.3}
+
+/* KEYS */
+.keys-list{margin-top:.5rem}
+.key-row{padding:.35rem .6rem;background:var(--bg2);border:1px solid var(--border);border-radius:4px;margin-bottom:.3rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem;font-family:var(--fm);font-size:.68rem}
+.key-row .key-id{color:var(--acc);font-weight:600}
+.key-row .key-state{font-size:.58rem;padding:.1rem .4rem;border-radius:2px;background:rgba(74,157,106,.15);color:var(--ok);border:1px solid rgba(74,157,106,.3);letter-spacing:.08em;text-transform:uppercase;font-weight:700}
+.key-row .key-state.cool{background:rgba(212,160,23,.15);color:var(--warn);border-color:rgba(212,160,23,.3)}
+.key-row .key-state.dead{background:rgba(200,90,74,.15);color:var(--err);border-color:rgba(200,90,74,.3)}
+
+/* SECTIONS */
+.section{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);margin-bottom:.9rem;overflow:hidden}
+.section.hidden{display:none!important}
+.section-header{padding:.8rem 1rem;cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center}
+.section-title{font-size:.78rem;text-transform:uppercase;letter-spacing:.18em;color:var(--ink);font-weight:500;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.badge{display:inline-block;padding:.1rem .45rem;background:transparent;color:var(--acc);border:1px solid var(--border);border-radius:2px;font-size:.58rem;letter-spacing:.12em;font-weight:600}
+.chevron{font-size:.7rem;color:var(--faint);transition:transform .3s}
+.section.open .chevron{transform:rotate(180deg);color:var(--acc)}
+.section-body{max-height:0;overflow:hidden;transition:max-height .4s ease}
+.section.open .section-body{max-height:24000px}
+.section-content{padding:0 1rem 1rem}
+
+/* MODE INFO */
+.mode-info{background:rgba(139,95,196,.06);border:1px solid var(--acc3);border-left:2px solid var(--acc3);border-radius:var(--r);padding:.7rem .9rem;font-size:.75rem;color:var(--ink);margin-bottom:.8rem;line-height:1.5}
+.mode-info strong{color:var(--acc3)}
+
+/* VIDEOS */
+.videos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.7rem;margin-top:.6rem}
+.scene-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;transition:border-color .3s}
+.scene-card.generating{border-color:var(--acc)}
+.scene-card.done{border-color:var(--ok)}
+.scene-card.error{border-color:var(--err)}
+.scene-card-header{padding:.45rem .65rem;font-size:.65rem;font-family:var(--fm);color:var(--dim);display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);gap:.4rem}
+.scene-card-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.scene-card-body{padding:.5rem}
+.scene-card-body video{width:100%;border-radius:2px;background:#000;display:block}
+.scene-placeholder{width:100%;aspect-ratio:9/16;background:#0a0a12;border-radius:2px;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:.65rem;font-family:var(--fm);flex-direction:column;gap:.4rem;text-align:center;padding:.4rem}
+.scene-download{display:block;margin-top:.4rem;font-size:.65rem;color:var(--acc);text-decoration:none;text-align:center;padding:.35rem;border:1px solid var(--border);border-radius:3px;transition:all .2s;font-family:var(--fm)}
+.scene-download:hover{background:rgba(229,193,90,.08);border-color:var(--acc)}
+.spinner-mini{width:12px;height:12px;border:2px solid rgba(229,193,90,.2);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* PLAYER */
+.player-overlay{position:fixed;inset:0;background:#000;z-index:2000;display:none;align-items:center;justify-content:center;cursor:pointer}
+.player-overlay.visible{display:flex}
+#player-canvas{display:block;max-width:100vw;max-height:100vh;background:#000}
+.player-hint{position:absolute;bottom:1rem;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.55);font-size:.7rem;font-family:var(--fm);letter-spacing:.12em;text-transform:uppercase;pointer-events:none;opacity:1;transition:opacity .5s;text-align:center;background:rgba(0,0,0,.4);padding:.3rem .7rem;border-radius:3px}
+.player-hint.hidden{opacity:0}
+.player-controls{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:.8rem .9rem;margin-top:.5rem}
+.player-row{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem}
+.player-row .btn{margin-bottom:0;flex:1;min-width:120px}
+
+/* CONSOLE */
+.console{background:#05050a;border:1px solid var(--border);border-radius:var(--r);padding:.6rem .8rem;margin-top:.6rem;max-height:220px;overflow-y:auto;font-family:var(--fm);font-size:.68rem;line-height:1.5;color:#c8c8d0}
+.console .c-line{padding:.15rem 0;border-bottom:1px dashed rgba(255,255,255,.03)}
+.console .c-line:last-child{border-bottom:none}
+.console .c-time{color:var(--faint);margin-right:.5rem}
+.console .c-tag{color:var(--acc);font-weight:600;margin-right:.4rem}
+.console .c-line.info .c-tag{color:var(--acc)}
+.console .c-line.success .c-tag{color:var(--ok)}
+.console .c-line.warn .c-tag{color:var(--warn)}
+.console .c-line.error .c-tag{color:var(--err)}
+.console .c-line.api .c-tag{color:var(--acc2)}
+.console .c-line.ai .c-tag{color:var(--acc3)}
+
+/* STATUS BAR */
+.status-bar{position:fixed;bottom:0;left:0;right:0;background:var(--bg3);border-top:1px solid var(--border);color:var(--ink);padding:.7rem 1rem;font-size:.72rem;display:flex;align-items:center;gap:.6rem;transform:translateY(100%);transition:transform .35s;z-index:100;font-family:var(--fm);box-shadow:0 -4px 20px rgba(0,0,0,.4)}
+.status-bar.visible{transform:translateY(0)}
+.spinner{width:12px;height:12px;border:2px solid rgba(229,193,90,.2);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+
+/* TOAST */
+.toast{position:fixed;top:1rem;left:50%;transform:translateX(-50%) translateY(-100px);background:var(--bg3);color:var(--ink);border:1px solid var(--border);border-left:3px solid var(--acc);padding:.7rem 1.1rem;border-radius:var(--r);font-size:.78rem;box-shadow:0 8px 32px rgba(0,0,0,.6);z-index:1000;opacity:0;transition:transform .35s,opacity .35s;max-width:90vw;text-align:center;font-family:var(--fm)}
+.toast.visible{transform:translateX(-50%) translateY(0);opacity:1}
+.toast.success{border-left-color:var(--ok)}
+.toast.error{border-left-color:var(--err)}
+.toast.warn{border-left-color:var(--warn)}
+
+/* NO SLEEP */
+#noSleepCanvas{position:fixed;top:0;left:0;width:1px;height:1px;opacity:.01;pointer-events:none;z-index:-1}
+#noSleepVideo{position:fixed;top:0;left:0;width:1px;height:1px;opacity:.01;pointer-events:none;z-index:-1}
+
+@media(max-width:480px){h1{font-size:1.4rem}.videos-grid{grid-template-columns:1fr 1fr}.mode-grid{max-height:280px}}
+</style>
+</head>
+<body>
+
+<header>
+<span class="badge-top">STUDIO MASTER · 90 MODES</span>
+<h1>Studio Master</h1>
+<p class="subtitle">90 applications unifiées · TikTok · Films · Séries · Pool multi-clés · Parser 5-stratégies · Anti-fuite · Player Canvas · TTS FR</p>
+</header>
+
+<!-- API PANEL -->
+<div class="panel" id="api-panel">
+<label class="label">Clés API Agnes — une par ligne (N clés = N workers parallèles)</label>
+<textarea id="api-keys-input" placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx&#10;sk-yyyyyyyyyyyyyyyyyyyyyyyy" rows="2" spellcheck="false" autocomplete="off"></textarea>
+<button type="button" class="btn btn-mini" id="api-save-btn">Enregistrer les clés</button>
+<div class="status" id="api-status-line"><span class="dot"></span><span id="api-status-text">Aucune clé API enregistrée</span></div>
+<div class="keys-list" id="api-keys-status"></div>
+<div class="hint">Clés gratuites sur <a href="https://platform.agnes-ai.com" target="_blank">platform.agnes-ai.com</a></div>
+</div>
+
+<!-- MODE SELECTOR -->
+<div class="section open" id="section-mode">
+<div class="section-header" data-toggle="section-mode">
+<span class="section-title">🎯 Mode actif <span class="badge" id="mode-badge">—</span></span>
+<span class="chevron">▼</span>
+</div>
+<div class="section-body"><div class="section-content">
+<div class="mode-info hidden" id="mode-info"></div>
+<div class="mode-grid" id="mode-grid"></div>
+</div></div>
+</div>
+
+<!-- SUJET / IDÉE -->
+<div class="section open" id="section-subject">
+<div class="section-header" data-toggle="section-subject">
+<span class="section-title">💡 Sujet / Idée <span class="badge" id="subject-badge">requis</span></span>
+<span class="chevron">▼</span>
+</div>
+<div class="section-body"><div class="section-content">
+<textarea id="subject-input" placeholder="Décrivez votre sujet, votre idée, votre histoire…"></textarea>
+<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem;">
+<button type="button" class="btn btn-mini" id="subject-example-btn">Exemple</button>
+</div>
+</div></div>
+</div>
+
+<!-- PARAMÈTRES DYNAMIQUES -->
+<div class="section" id="section-params">
+<div class="section-header" data-toggle="section-params">
+<span class="section-title">⚙️ Paramètres <span class="badge" id="params-badge">—</span></span>
+<span class="chevron">▼</span>
+</div>
+<div class="section-body"><div class="section-content">
+<div id="params-container"></div>
+</div></div>
+</div>
+
+<!-- LAUNCH -->
+<button type="button" class="btn btn-primary" id="launch-btn" disabled>▶ Lancer la génération</button>
+<button type="button" class="btn btn-stop" id="stop-btn">⏹ Arrêter</button>
+
+<!-- SCÉNARIO -->
+<div class="section hidden" id="section-script">
+<div class="section-header" data-toggle="section-script">
+<span class="section-title">📜 Scénario <span class="badge" id="script-badge">—</span></span>
+<span class="chevron">▼</span>
+</div>
+<div class="section-body"><div class="section-content">
+<div class="console" id="script-view" style="max-height:400px;color:var(--ink);font-family:var(--fs);font-size:.82rem;line-height:1.65;white-space:pre-wrap;"></div>
+</div></div>
+</div>
+
+<!-- VIDÉOS -->
+<div class="section hidden" id="section-videos">
+<div class="section-header" data-toggle="section-videos">
+<span class="section-title">🎞️ Séquences vidéo <span class="badge" id="videos-count">0</span></span>
+<span class="chevron">▼</span>
+</div>
+<div class="section-body"><div class="section-content">
+<div class="videos-grid" id="videos-grid"></div>
+</div></div>
+</div>
+
+<!-- PLAYER -->
+<div class="section hidden" id="section-player">
+<div class="section-header" data-toggle="section-player">
+<span class="section-title">▶ Player <span class="badge" id="player-badge">0</span></span>
+<span class="chevron">▼</span>
+</div>
+<div class="section-body"><div class="section-content">
+<div class="player-controls">
+<div class="player-row">
+<button type="button" class="btn" id="play-film-btn" disabled>▶ Diffuser</button>
+<button type="button" class="btn" id="replay-btn" disabled>🔁 Rejouer</button>
+</div>
+<label style="display:flex;align-items:center;gap:.5rem;font-size:.72rem;color:var(--dim);margin-top:.4rem;">
+<input type="checkbox" id="voice-toggle" checked style="width:auto;margin:0;accent-color:var(--acc);">
+Narration vocale française (TTS navigateur)
+</label>
+</div>
+<div class="hint">Lecture séquentielle avec overlay FR. Échap ou clic pour quitter.</div>
+</div></div>
+</div>
+
+<!-- CONSOLE -->
+<div class="section" id="section-console">
+<div class="section-header" data-toggle="section-console">
+<span class="section-title">🖥️ Console <span class="badge" id="console-badge">0</span></span>
+<span class="chevron">▼</span>
+</div>
+<div class="section-body"><div class="section-content">
+<div class="console" id="console-view"></div>
+<div style="display:flex;gap:.4rem;margin-top:.4rem;">
+<button type="button" class="btn btn-mini" id="console-clear-btn">Effacer</button>
+<button type="button" class="btn btn-mini" id="console-copy-btn">Copier</button>
+</div>
+</div></div>
+</div>
+
+<div class="status-bar" id="status-bar"><div class="spinner"></div><span id="status-text">Préparation…</span></div>
+<div class="toast" id="toast"><span id="toast-text">Message</span></div>
+
+<div class="player-overlay" id="player-overlay">
+<canvas id="player-canvas"></canvas>
+<div class="player-hint" id="player-hint-overlay">Échap ou clic pour quitter</div>
+</div>
+
+<canvas id="noSleepCanvas" width="2" height="2"></canvas>
+<video id="noSleepVideo" playsinline muted loop></video>
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+// CONFIGURATION
+// ══════════════════════════════════════════════════════════════════
+const API_BASE = 'https://apihub.agnes-ai.com/v1';
+const POLL_BASE = 'https://apihub.agnes-ai.com/agnesapi';
+const MODEL_TEXT = 'agnes-2.5-flash';
+const MODEL_IMAGE = 'agnes-2.1-flash';
+const MODEL_VIDEO = 'agnes-video-v2.0';
+const FRAME_RATE = 24;
+const API_KEYS_STORAGE = 'studio_master_keys_v1';
+const DEBUG_MAX = 600;
+const VIDEO_FIRST_POLL_DELAY_SEC = 60;
+const VIDEO_POLL_INTERVALS = [8,8,12,12,20,20,25];
+const VIDEO_MAX_POLL_ATTEMPTS = 100;
+const IMAGE_PARALLEL = 3;
+const IMAGE_INTERVAL_MS = 3400;
+
+// ══════════════════════════════════════════════════════════════════
+// PALETTES WES ANDERSON
+// ══════════════════════════════════════════════════════════════════
+const WA_PALETTES = [
+  { id:'pink-mint', label:'Rose poudré & Menthe', colors:['#F4C2C2','#A8D8B9','#E5B95A','#F5F0E1','#7B9FB0'] },
+  { id:'coral-teal', label:'Corail & Turquoise', colors:['#E8A87C','#85CDCA','#F4E4BA','#D4A5A5','#7C6A8B'] },
+  { id:'mustard-blue', label:'Moutarde & Bleu ciel', colors:['#F7D794','#778BEB','#E77F67','#F1E7D0','#3B4B55'] },
+  { id:'lavender', label:'Lavande & Ocre', colors:['#C5B7D9','#E5B95A','#F4A6A6','#F5EFE0','#7A8B7E'] },
+  { id:'sage-blush', label:'Sauge & Blush', colors:['#B8C9A8','#F1C6C6','#E8B44A','#F5F0E1','#5B6E7A'] },
+  { id:'ochre-rose', label:'Ocre & Rose fané', colors:['#D9A44A','#E8B8B8','#8FAE8B','#F4E8D0','#6B5B7B'] }
+];
+
+// ══════════════════════════════════════════════════════════════════
+// CATALOGUE DES 90 MODES
+// ══════════════════════════════════════════════════════════════════
+const MODES = [];
+
+// --- CATÉGORIE TikTok (941-990) ---
+const TIKTOK_CAT = 'TikTok & Monétisation (941-990)';
+const tiktokModes = [
+  {n:941, name:'TikTok JT 60s', kind:'tiktok-jt', scenes:4, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:942, name:'TikTok Débat Multi-Clés', kind:'tiktok-multi', scenes:3, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:943, name:'TikTok Série Quotidienne', kind:'tiktok-serie', scenes:4, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:944, name:'TikTok Micro-JT 15s', kind:'tiktok-micro', scenes:1, duration:5, ratio:'9:16', newsSource:'lfi'},
+  {n:945, name:'TikTok Chaton du Jour', kind:'tiktok-chaton', scenes:3, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:946, name:'TikTok Combinaison Folle', kind:'tiktok-combo', scenes:3, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:947, name:'TikTok Analyse de Style', kind:'tiktok-style', scenes:3, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:948, name:'TikTok Anti-Fuite', kind:'tiktok-antileak', scenes:3, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:949, name:'TikTok Player Canvas Démo', kind:'tiktok-player', scenes:3, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:950, name:'TikTok Parser JSON', kind:'tiktok-parser', scenes:2, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:951, name:'TikTok Multi-Endpoints', kind:'tiktok-polling', scenes:2, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:952, name:'TikTok Pool Multi-Clés', kind:'tiktok-pool', scenes:2, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:953, name:'TikTok Format 1K', kind:'tiktok-format', scenes:2, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:954, name:'TikTok Fallback Programmatique', kind:'tiktok-fallback', scenes:3, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:955, name:'TikTok Chatons Kung-Fu', kind:'tiktok-kungfu', scenes:3, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:956, name:'TikTok Wes Anderson Tutorial', kind:'tiktok-wa', scenes:3, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:957, name:'TikTok Palette Generator', kind:'tiktok-palette', scenes:3, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:958, name:'TikTok RSS Fallback', kind:'tiktok-rss', scenes:2, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:959, name:'TikTok Validation Manuelle', kind:'tiktok-validation', scenes:3, duration:15, ratio:'9:16', newsSource:'lfi'},
+  {n:960, name:'TikTok JT Personnalisé', kind:'tiktok-jt-custom', scenes:4, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:961, name:'TikTok JT Local Vendée', kind:'tiktok-local', scenes:3, duration:15, ratio:'9:16', newsSource:'custom', defaultSubject:'Vendée'},
+  {n:962, name:'TikTok JT Association', kind:'tiktok-asso', scenes:3, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:963, name:'TikTok JT Mariage', kind:'tiktok-mariage', scenes:4, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:964, name:'TikTok JT Anniversaire', kind:'tiktok-anniv', scenes:4, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:965, name:'TikTok JT Entreprise', kind:'tiktok-entreprise', scenes:3, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:966, name:'TikTok JT École', kind:'tiktok-ecole', scenes:3, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:967, name:'TikTok JT Club Sportif', kind:'tiktok-sport', scenes:3, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:968, name:'TikTok JT Paroisse', kind:'tiktok-paroisse', scenes:3, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:969, name:'TikTok JT Syndic', kind:'tiktok-syndic', scenes:3, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:970, name:'TikTok JT Mairie', kind:'tiktok-mairie', scenes:3, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:971, name:'TikTok JT Parti Politique', kind:'tiktok-parti', scenes:3, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:972, name:'TikTok JT ONG', kind:'tiktok-ong', scenes:3, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:973, name:'TikTok JT Festival', kind:'tiktok-festival', scenes:3, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:974, name:'TikTok JT Salon', kind:'tiktok-salon', scenes:3, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:975, name:'TikTok JT Conférence', kind:'tiktok-conf', scenes:3, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:976, name:'TikTok JT Formation', kind:'tiktok-formation', scenes:3, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:977, name:'TikTok JT Voyage', kind:'tiktok-voyage', scenes:3, duration:15, ratio:'9:16', newsSource:'custom'},
+  {n:978, name:'TikTok JT Cuisine', kind:'tikt

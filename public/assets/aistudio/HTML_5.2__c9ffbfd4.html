@@ -1,0 +1,602 @@
+<script>
+(function(){
+'use strict';
+
+// ══════════════════════════════════════════════════════════════════
+// RÉCUPÉRATION DE L'API EXPOSÉE PAR LE BLOC B
+// ══════════════════════════════════════════════════════════════════
+const SM = window.__SM;
+if(!SM){
+  console.error('[Studio Master] Bloc B manquant');
+  document.body.innerHTML = '<div style="padding:2rem;text-align:center;color:#c85a4a;font-family:sans-serif;">Erreur : le bloc B n\'a pas été chargé.</div>';
+  return;
+}
+
+const {
+  state, MODES, WA_PALETTES, $, esc, sleep, nowTime, setStatus, showToast,
+  isIOS, sanitizeForApi, safeLocalStorage, consoleLog, clearConsole, copyConsole,
+  navigateTo, goBack, applyTheme, toggleTheme,
+  loadStats, saveStats, updateStatsUI, incrementStats,
+  activateWakeLock, deactivateWakeLock,
+  refreshKeyPool, hasActiveKey, renderKeyList, updateApiPanel,
+  saveKeysFromUI, testApiKey, deleteAllKeys, updateOnboarding, updateAccountBadge,
+  apiFetch, extractJson, renderModeCategories, selectMode, updateLaunchButton,
+  fetchLfiNews, generateImage, createVideoTask, pollVideo,
+  buildScriptPrompt, callChatCompletion, buildFallbackScript, normalizeScript,
+  initAssistant, attachAssistantEvents, sendAssistantMessage,
+  openAssistantPanel, closeAssistantPanel, toggleAssistantPanel,
+  updateAssistantBadge, appendAssistantMessage,
+  initTour, attachTourEvents, closeTour, attachHelpEvents, openHelpPopover, closeHelpPopover,
+  notifyGenerationComplete, stopTitleBlink,
+  API_BASE, POLL_BASE, MODEL_TEXT, MODEL_IMAGE, MODEL_VIDEO, FRAME_RATE,
+  API_KEYS_STORAGE, THEME_STORAGE, STATS_STORAGE, ASSISTANT_HISTORY_STORAGE, TUTORIAL_STORAGE,
+  VIDEO_FIRST_POLL_DELAY_SEC, VIDEO_POLL_INTERVALS, VIDEO_MAX_POLL_ATTEMPTS
+} = SM;
+
+// ══════════════════════════════════════════════════════════════════
+// TTS
+// ══════════════════════════════════════════════════════════════════
+let ttsVoice = null;
+function initTTS(){
+  if(!('speechSynthesis' in window)) return;
+  const update = () => {
+    const voices = window.speechSynthesis.getVoices();
+    const fr = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith('fr'));
+    ttsVoice = fr.find(v => /premium|enhanced|amelie|thomas|audrey|marie/i.test(v.name)) || fr[0] || null;
+  };
+  update();
+  if(window.speechSynthesis.onvoiceschanged !== undefined){ window.speechSynthesis.onvoiceschanged = update; }
+  setTimeout(update, 1000);
+}
+function speakFR(text){
+  if(!state.voiceEnabled || !text) return;
+  if(!('speechSynthesis' in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'fr-FR'; u.rate = 1.05; u.pitch = 1.0;
+    if(ttsVoice) u.voice = ttsVoice;
+    window.speechSynthesis.speak(u);
+  } catch(e){}
+}
+function stopTTS(){ try { if('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch(e){} }
+
+// ══════════════════════════════════════════════════════════════════
+// BUILD VIDEO PROMPT
+// ══════════════════════════════════════════════════════════════════
+function buildVideoPrompt(scene, script, palette, mode){
+  const char = scene.character || {};
+  const shots = scene.shots || [];
+  const shotText = shots.map((sh, i) =>
+    'SHOT ' + (i+1) + ' : ' +
+    (sh.camera ? sh.camera.type + ' / ' + sh.camera.movement + ' / ' + sh.camera.framing : 'symmetric shot') +
+    ' — ' + (sh.description || '')
+  ).join('\n');
+  const line = (scene.dialogue && scene.dialogue.line_fr) ? scene.dialogue.line_fr : '';
+  const tutorialBlock = mode && mode.promptTemplate ? '\nSPECIFIC INSTRUCTION FOR THIS MODE : ' + mode.promptTemplate : '';
+  return [
+    'A WES ANDERSON CINEMATIC SCENE — SHOT ON 35MM FILM.',
+    '',
+    '► PERFECT BILATERAL SYMMETRY, dead-center framing, planimetric staging, eye-level camera, locked-off or slow dolly-in.',
+    '► HARD CUTS between shots (no dissolves). Shot-reverse-shot for dialogue exchanges.',
+    '► 35MM FILM STOCK : visible grain, warm halation, soft contrast, slight magenta/gold cast.',
+    '► COLOR PALETTE : ' + palette.label + ' → ' + palette.colors.join(', ') + '. No neon.',
+    '► CHARACTER : ' + (char.name || 'kitten') + ' — ' + (char.physical_description || 'cute kawaii humanoid kitten with retro motorcycle helmet and pastel Shaolin kimono') + '.',
+    '► ACTING : deadpan, no smiling.',
+    tutorialBlock,
+    '',
+    'SCENE ' + scene.scene_number + ' — ' + (scene.type || 'scene').toUpperCase(),
+    'DECOR : ' + (scene.decor || 'pastel symmetric set'),
+    'ACTION : ' + (scene.action || 'the kitten speaks to camera'),
+    line ? 'SPOKEN LINE (French) : "' + line + '"' : '',
+    '',
+    'MONTAGE — ' + shots.length + ' SHOTS WITH HARD CUTS :',
+    shotText,
+    '',
+    'CONSTRAINTS : 35mm grain, hard cuts, perfect symmetry, pastel palette, no text, no subtitles, no watermarks.'
+  ].filter(Boolean).join('\n');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RENDER SCRIPT
+// ══════════════════════════════════════════════════════════════════
+function renderScript(script){
+  const panel = $('script-panel');
+  if(!panel) return;
+  panel.classList.remove('hidden');
+  const titleEl = $('script-title'), loglineEl = $('script-logline'), metaEl = $('script-meta'), badgeEl = $('script-badge'), detailsEl = $('script-details');
+  if(titleEl) titleEl.textContent = script.title || 'Sans titre';
+  if(loglineEl) loglineEl.textContent = script.logline || '';
+  if(badgeEl) badgeEl.textContent = script.scenes.length + ' scènes';
+  if(metaEl){
+    const chars = script.characters || [];
+    metaEl.innerHTML = '<span>👥 ' + chars.length + ' personnage' + (chars.length > 1 ? 's' : '') + '</span>' + '<span>🎬 ' + script.scenes.length + ' scènes</span>';
+  }
+  if(detailsEl){
+    let html = '';
+    script.scenes.forEach(sc => {
+      html += '<div class="scene-item">';
+      html += '<div class="scene-num">Scène ' + sc.scene_number + ' · ' + esc(sc.type || 'scene') + '</div>';
+      if(sc.character && sc.character.name){ html += '<div style="color:var(--ink);margin-top:.2rem;">🐱 <strong>' + esc(sc.character.name) + '</strong></div>'; }
+      if(sc.decor) html += '<div class="scene-decor">📍 ' + esc(sc.decor) + '</div>';
+      if(sc.dialogue && sc.dialogue.line_fr){ html += '<div class="scene-dialogue">🔊 « ' + esc(sc.dialogue.line_fr) + ' »</div>'; }
+      html += '</div>';
+    });
+    detailsEl.innerHTML = html;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RENDER VIDEOS
+// ══════════════════════════════════════════════════════════════════
+function renderVideos(){
+  const grid = $('videos-grid'), panel = $('videos-panel');
+  if(!grid || !panel) return;
+  if(state.videos.length > 0) panel.classList.remove('hidden');
+  while(grid.children.length > state.videos.length) grid.removeChild(grid.lastChild);
+  for(let i = grid.children.length; i < state.videos.length; i++){
+    const card = document.createElement('div');
+    card.className = 'scene-card';
+    card.dataset.index = String(i);
+    card.dataset.status = '';
+    card.dataset.url = '';
+    card.dataset.progress = '';
+    card.innerHTML = '<div class="scene-card-header"><span class="scene-card-title">Scène ' + (i+1) + '</span><span class="scene-card-status"></span></div><div class="scene-card-body"></div>';
+    grid.appendChild(card);
+  }
+  const mode = state.activeMode;
+  const ratio = mode ? mode.ratio : '9:16';
+  state.videos.forEach((v, i) => {
+    const card = grid.children[i];
+    if(!card) return;
+    const titleEl = card.querySelector('.scene-card-title'), statusEl = card.querySelector('.scene-card-status'), bodyEl = card.querySelector('.scene-card-body');
+    const titleText = 'Scène ' + (i+1) + (v.type ? ' · ' + v.type : '');
+    if(titleEl.textContent !== titleText) titleEl.textContent = titleText;
+    const newClass = 'scene-card ' + (v.status === 'done' ? 'done' : v.status === 'error' ? 'error' : 'generating');
+    if(card.className !== newClass) card.className = newClass;
+    if(v.status === 'done' && v.url){
+      if(card.dataset.url !== v.url){
+        statusEl.innerHTML = '<span style="color:var(--ok);">✓</span>';
+        bodyEl.innerHTML = '';
+        const video = document.createElement('video');
+        video.src = v.url; video.controls = true; video.preload = 'metadata'; video.playsInline = true;
+        video.setAttribute('playsinline', ''); video.setAttribute('webkit-playsinline', ''); video.muted = true;
+        if(ratio === '16:9') video.dataset.ratio = '16:9';
+        bodyEl.appendChild(video);
+        const dl = document.createElement('a');
+        dl.className = 'btn-download';
+        dl.href = v.url; dl.download = 'scene-' + String(i+1).padStart(2, '0') + '.mp4';
+        dl.target = '_blank'; dl.rel = 'noopener noreferrer';
+        dl.innerHTML = '⬇ Télécharger cette vidéo';
+        bodyEl.appendChild(dl);
+        card.dataset.url = v.url;
+      }
+    } else if(v.status === 'error'){
+      statusEl.innerHTML = '<span style="color:var(--err);">✕</span>';
+      bodyEl.innerHTML = '<div class="scene-placeholder" style="color:var(--err);">' + esc(v.error || 'Erreur') + '</div>';
+      card.dataset.progress = '';
+    } else {
+      statusEl.innerHTML = '<span style="color:var(--acc);">⏳</span>';
+      const progressTxt = v.progress || 'En attente…';
+      if(card.dataset.progress !== progressTxt){
+        bodyEl.innerHTML = '<div class="scene-placeholder"><div class="spinner"></div><span>' + esc(progressTxt) + '</span></div>';
+        card.dataset.progress = progressTxt;
+      }
+    }
+    card.dataset.status = v.status || '';
+  });
+  const badge = $('videos-count');
+  if(badge) badge.textContent = state.videos.filter(v => v.status === 'done').length + '/' + state.videos.length;
+  const hasVideos = state.videos.filter(v => v.status === 'done').length > 0;
+  const playerPanel = $('player-panel');
+  if(playerPanel && hasVideos) playerPanel.classList.remove('hidden');
+  const playBtn = $('play-film-btn'), replayBtn = $('replay-btn'), zipBtn = $('download-zip-btn');
+  if(playBtn) playBtn.disabled = !hasVideos || state.isGeneratingVideos;
+  if(replayBtn) replayBtn.disabled = !hasVideos || state.isGeneratingVideos;
+  if(zipBtn) zipBtn.disabled = !hasVideos || state.isGeneratingVideos;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// GÉNÉRATION VIDÉOS
+// ══════════════════════════════════════════════════════════════════
+async function generateAllVideos(script, mode, palette){
+  state.isGeneratingVideos = true;
+  state.videos = [];
+  const scenes = script.scenes.slice(0, mode.scenes);
+  scenes.forEach(sc => state.videos.push({ status:'pending', url:null, type:sc.type, progress:'En attente…' }));
+  renderVideos();
+  const workerCount = Math.max(1, state.keyPool.filter(k => k.active).length);
+  consoleLog('info','WORKERS', workerCount + ' worker(s) pour ' + scenes.length + ' scènes');
+  const queue = scenes.map((scene, index) => ({ scene, index }));
+  const workers = [];
+  for(let w = 0; w < workerCount; w++){ workers.push(videoWorker(w, queue, script, palette, mode)); }
+  await Promise.all(workers);
+  state.isGeneratingVideos = false;
+  renderVideos();
+}
+async function videoWorker(workerId, queue, script, palette, mode){
+  while(queue.length > 0 && !state.stopRequested){
+    const task = queue.shift();
+    if(!task) break;
+    await generateOneVideo(task.scene, task.index, script, palette, mode, workerId);
+  }
+}
+async function generateOneVideo(scene, index, script, palette, mode, workerId){
+  if(state.stopRequested) return;
+  const prompt = buildVideoPrompt(scene, script, palette, mode);
+  state.videos[index].status = 'loading';
+  state.videos[index].progress = 'Initialisation…';
+  renderVideos();
+  const numFrames = mode.duration * FRAME_RATE + 1;
+  const charName = (scene.character && scene.character.name) || '?';
+  consoleLog('ai','Scène ' + (index+1), '[' + charName + '] ' + mode.duration + 's');
+  try {
+    const videoIdObj = await createVideoTask(prompt, null, numFrames);
+    const videoUrl = await pollVideo(videoIdObj, (prog) => { state.videos[index].progress = prog; renderVideos(); });
+    state.videos[index] = { status:'done', url:videoUrl, type:scene.type || 'scene' };
+    renderVideos();
+    consoleLog('success','Scène ' + (index+1), 'Terminée');
+  } catch(e){
+    if(e.message === 'Arrêt demandé') return;
+    state.videos[index] = { status:'error', url:null, type:scene.type || 'scene', error:e.message };
+    renderVideos();
+    consoleLog('error','Scène ' + (index+1), e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PIPELINE PRINCIPAL
+// ══════════════════════════════════════════════════════════════════
+async function runPipeline(){
+  if(state.isRunning) return;
+  if(!hasActiveKey()){ showToast('Connectez votre compte dans 👤 Mon compte', 'error'); navigateTo('account'); return; }
+  if(!state.activeMode){ showToast('Choisissez un style', 'error'); return; }
+  const subject = ($('subject-input').value || '').trim();
+  if(subject.length < 5){ showToast('Décrivez votre sujet (5 caractères min)', 'error'); return; }
+  state.isRunning = true;
+  state.stopRequested = false;
+  state.subject = subject;
+  state.script = null;
+  state.videos = [];
+  state.workingPollUrlBuilder = null;
+  $('launch-floating').classList.remove('visible');
+  $('stop-floating').classList.add('visible');
+  document.body.classList.add('has-floating-btn');
+  $('script-panel').classList.add('hidden');
+  $('videos-panel').classList.add('hidden');
+  $('player-panel').classList.add('hidden');
+  $('videos-grid').innerHTML = '';
+  const mode = state.activeMode;
+  const palette = state.palette;
+  const nKeys = state.keyPool.filter(k => k.active).length;
+  consoleLog('success','DÉMARRAGE','Mode : ' + mode.name + ' · ' + mode.scenes + ' scènes · ' + nKeys + ' compte(s)');
+  setStatus('Préparation…');
+  await activateWakeLock();
+  if(isIOS && 'speechSynthesis' in window){ try { const u0 = new SpeechSynthesisUtterance(' '); u0.volume = 0; window.speechSynthesis.speak(u0); } catch(e){} }
+  try {
+    let newsItems = [];
+    if(mode.newsSource === 'lfi'){ setStatus('Récupération des actualités…'); newsItems = await fetchLfiNews(); consoleLog('success','ACTUALITÉS', newsItems.length + ' sujets chargés'); }
+    setStatus('Écriture du scénario…');
+    consoleLog('ai','SCÉNARIO','Génération en cours…');
+    const prompt = buildScriptPrompt(mode, subject, palette, newsItems);
+    let script = null;
+    for(let attempt = 1; attempt <= 2; attempt++){
+      try {
+        const content = await callChatCompletion('Tu es scénariste. Retourne UNIQUEMENT un JSON strict. Pas de markdown. Toutes les chaînes sur UNE LIGNE.', prompt, 'Scénario (essai ' + attempt + ')', 8000, attempt === 1 ? 0.7 : 0.3);
+        if(content){ const parsed = extractJson(content); if(parsed && parsed.scenes && Array.isArray(parsed.scenes)){ script = normalizeScript(parsed, mode, subject, palette, newsItems); if(script){ break; } } }
+      } catch(e){ consoleLog('error','SCÉNARIO','Tentative ' + attempt + ' : ' + e.message); }
+    }
+    if(!script){ consoleLog('warn','SCÉNARIO','Génération de secours'); script = buildFallbackScript(mode, subject, palette, newsItems); script = normalizeScript(script, mode, subject, palette, newsItems); }
+    if(!script) throw new Error('Impossible de générer un scénario');
+    state.script = script;
+    renderScript(script);
+    await sleep(400);
+    setStatus('Génération des vidéos…');
+    consoleLog('ai','VIDÉOS','Génération de ' + script.scenes.length + ' vidéos…');
+    await generateAllVideos(script, mode, palette);
+    const done = state.videos.filter(v => v.status === 'done').length;
+    consoleLog('success','TERMINÉ', done + '/' + script.scenes.length + ' vidéos prêtes');
+    setStatus('✦ Terminé — ' + done + '/' + script.scenes.length + ' vidéos ✦');
+    await sleep(2500);
+    setStatus(null);
+    showToast(done + ' vidéo(s) générée(s) ✓', 'success', 3000);
+    try { if(notifyGenerationComplete && done > 0) notifyGenerationComplete(done); } catch(e){ consoleLog('warn','NOTIF', e.message); }
+  } catch(e){
+    if(e.message === 'Arrêt demandé'){ consoleLog('warn','ARRÊT','Arrêt demandé'); setStatus('Arrêté.'); }
+    else { consoleLog('error','ERREUR', e.message); setStatus('Erreur : ' + e.message.slice(0, 60)); showToast('Erreur : ' + e.message.slice(0, 60), 'error', 4000); }
+    await sleep(1500);
+    setStatus(null);
+  }
+  state.isRunning = false;
+  state.stopRequested = false;
+  $('stop-floating').classList.remove('visible');
+  document.body.classList.remove('has-floating-btn');
+  updateLaunchButton();
+  await deactivateWakeLock();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PLAYER CANVAS
+// ══════════════════════════════════════════════════════════════════
+async function playFilm(){
+  const ready = state.videos.filter(v => v.status === 'done' && v.url);
+  if(ready.length === 0){ showToast('Aucune vidéo à lire', 'error'); return; }
+  if(state.isPlayingFilm) return;
+  state.isPlayingFilm = true;
+  const overlay = $('player-overlay'), canvas = $('player-canvas'), hint = $('player-hint-overlay');
+  if(!overlay || !canvas) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssW = window.innerWidth, cssH = window.innerHeight;
+  canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
+  canvas.style.width = cssW + 'px'; canvas.style.height = cssH + 'px';
+  const ctx = canvas.getContext('2d');
+  overlay.classList.add('visible');
+  if(hint){ hint.classList.remove('hidden'); setTimeout(() => hint.classList.add('hidden'), 3000); }
+  try { if('speechSynthesis' in window){ const u0 = new SpeechSynthesisUtterance(' '); u0.volume = 0; window.speechSynthesis.speak(u0); } } catch(e){}
+  const script = state.script || { scenes: [] };
+  const scenes = script.scenes || [];
+  const readyWithScene = ready.map(v => { const origIdx = state.videos.indexOf(v); return { video: v, scene: scenes[origIdx] || {} }; });
+  for(let i = 0; i < readyWithScene.length; i++){
+    if(!state.isPlayingFilm) break;
+    const { video, scene } = readyWithScene[i];
+    await playOneScene(video, scene, ctx, canvas, dpr);
+  }
+  stopFilmPlayback();
+}
+function playOneScene(videoObj, scene, ctx, canvas, dpr){
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.src = videoObj.url;
+    video.playsInline = true; video.setAttribute('playsinline', ''); video.setAttribute('webkit-playsinline', ''); video.muted = true;
+    let ttsFired = false, finished = false;
+    const finish = () => { if(finished) return; finished = true; resolve(); };
+    const startTTS = () => { if(ttsFired) return; ttsFired = true; const line = (scene.dialogue && scene.dialogue.line_fr) || scene.text_overlay_fr || ''; if(line) speakFR(line); };
+    const ttsGuard = setTimeout(() => startTTS(), 2000);
+    const drawOverlay = (w, h) => {
+      const t = video.currentTime || 0; const dur = video.duration || 8;
+      let alpha = 1;
+      if(t < 0.4) alpha = t/0.4; else if(dur - t < 0.5) alpha = Math.max(0, (dur - t)/0.5);
+      if(alpha <= 0) return;
+      const pad = Math.round(Math.min(30*dpr, w*0.03));
+      const bandH = Math.round(Math.min(96*dpr, h*0.16));
+      const bandY = h - bandH - pad; const bandX = pad; const bandW = w - pad*2;
+      ctx.save(); ctx.globalAlpha = alpha;
+      const grad = ctx.createLinearGradient(bandX, bandY, bandX, bandY + bandH);
+      grad.addColorStop(0, 'rgba(10,10,18,0)'); grad.addColorStop(0.35, 'rgba(10,10,18,0.85)'); grad.addColorStop(1, 'rgba(10,10,18,0.95)');
+      ctx.fillStyle = grad; ctx.fillRect(bandX, bandY, bandW, bandH);
+      ctx.fillStyle = '#e5c15a'; ctx.fillRect(bandX, bandY + Math.round(bandH*0.15), Math.round(5*dpr), bandH - Math.round(bandH*0.3));
+      const speaker = (scene.dialogue && scene.dialogue.speaker) || (scene.character && scene.character.name) || '';
+      const nameSize = Math.round(Math.min(15*dpr, h*0.022));
+      const textSize = Math.round(Math.min(22*dpr, h*0.032));
+      if(speaker){ ctx.fillStyle = '#e5c15a'; ctx.font = '700 ' + nameSize + 'px -apple-system, BlinkMacSystemFont, Helvetica, Arial'; ctx.textBaseline = 'top'; ctx.fillText(speaker.toUpperCase(), bandX + Math.round(bandH*0.22), bandY + Math.round(bandH*0.18)); }
+      const overlayText = scene.text_overlay_fr || (scene.dialogue && scene.dialogue.line_fr) || '';
+      if(overlayText){
+        ctx.fillStyle = '#f5f0e1'; ctx.font = '500 ' + textSize + 'px -apple-system, BlinkMacSystemFont, Helvetica, Arial'; ctx.textBaseline = 'top';
+        let txt = overlayText; const maxW = bandW - Math.round(bandH*0.4);
+        while(ctx.measureText(txt).width > maxW && txt.length > 4) txt = txt.slice(0, -4) + '…';
+        ctx.fillText(txt, bandX + Math.round(bandH*0.22), bandY + Math.round(bandH*0.5));
+      }
+      ctx.restore();
+    };
+    const draw = () => {
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+      const ar = vw/vh, car = canvas.width/canvas.height;
+      let dw, dh, dx, dy;
+      if(ar > car){ dw = canvas.width; dh = canvas.width/ar; dx = 0; dy = (canvas.height - dh)/2; } else { dh = canvas.height; dw = canvas.height*ar; dx = (canvas.width - dw)/2; dy = 0; }
+      try { ctx.drawImage(video, dx, dy, dw, dh); } catch(e){}
+      drawOverlay(canvas.width, canvas.height);
+    };
+    const loop = () => { if(!state.isPlayingFilm || video.paused || video.ended){ clearTimeout(ttsGuard); finish(); return; } draw(); state.playRAF = requestAnimationFrame(loop); };
+    video.onloadedmetadata = () => { clearTimeout(ttsGuard); startTTS(); video.play().then(() => loop()).catch(() => { startTTS(); finish(); }); };
+    video.oncanplay = () => startTTS();
+    video.onended = () => { clearTimeout(ttsGuard); finish(); };
+    video.onerror = () => { startTTS(); clearTimeout(ttsGuard); finish(); };
+    video.load();
+  });
+}
+function stopFilmPlayback(){
+  state.isPlayingFilm = false;
+  if(state.playRAF) cancelAnimationFrame(state.playRAF);
+  state.playRAF = null;
+  stopTTS();
+  const overlay = $('player-overlay'); if(overlay) overlay.classList.remove('visible');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// EXPORT ZIP
+// ══════════════════════════════════════════════════════════════════
+async function exportZip(){
+  const ready = state.videos.filter(v => v.status === 'done' && v.url);
+  if(ready.length === 0){ showToast('Aucune vidéo à exporter', 'error'); return; }
+  showToast('Préparation du ZIP…', 'warn', 2000);
+  try {
+    if(typeof JSZip === 'undefined'){
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+    const zip = new JSZip();
+    const folderName = 'studio-master-' + (state.activeMode ? state.activeMode.n : 'export');
+    const folder = zip.folder(folderName);
+    if(state.script){ folder.file('scenario.json', JSON.stringify(state.script, null, 2)); }
+    for(let i = 0; i < ready.length; i++){
+      const v = ready[i];
+      showToast('Téléchargement ' + (i+1) + '/' + ready.length, 'warn', 1500);
+      try {
+        const res = await fetch(v.url);
+        if(!res.ok) throw new Error('HTTP ' + res.status);
+        const blob = await res.blob();
+        const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+        folder.file('scene-' + String(i+1).padStart(2, '0') + '.' + ext, blob);
+      } catch(e){ consoleLog('warn','ZIP','Scène ' + (i+1) + ' échouée : ' + e.message); }
+    }
+    folder.file('manifest.txt', 'Studio Master v5.2\n' + 'Mode : ' + (state.activeMode ? state.activeMode.name : '—') + '\n' + 'Sujet : ' + (state.subject || '—') + '\n' + 'Palette : ' + (state.palette ? state.palette.label : '—') + '\n' + 'Date : ' + new Date().toISOString() + '\n' + 'Vidéos : ' + ready.length + '\n');
+    const content = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    const url = URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = url; a.download = folderName + '-' + Date.now() + '.zip';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    showToast('ZIP exporté ✓', 'success', 3000);
+    consoleLog('success','ZIP', ready.length + ' vidéos + scénario');
+  } catch(e){ showToast('Export impossible : ' + e.message.slice(0, 40), 'error', 4000); consoleLog('error','ZIP', e.message); }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PWA
+// ══════════════════════════════════════════════════════════════════
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; const btn = $('install-btn'); if(btn) btn.disabled = false; });
+window.addEventListener('appinstalled', () => { deferredPrompt = null; const btn = $('install-btn'); if(btn){ btn.textContent = '✅ Installée'; btn.disabled = true; } showToast('Application installée ✓', 'success', 3000); });
+async function installPWA(){
+  if(!deferredPrompt){
+    if(isIOS){ showToast('Sur iOS : Partager → Sur l\'écran d\'accueil', 'warn', 5000); }
+    else { showToast('Installation non disponible sur ce navigateur', 'warn', 3000); }
+    return;
+  }
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  consoleLog('info','PWA','Choix : ' + outcome);
+  deferredPrompt = null;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// HELP
+// ══════════════════════════════════════════════════════════════════
+function showHelp(){
+  const help = [
+    '🎬 STUDIO MASTER — AIDE', '',
+    'Comment ça marche ?', '',
+    '1. Allez dans 👤 Mon compte (icône en haut à droite)',
+    '2. Collez votre code de connexion gratuit',
+    '3. Revenez à l\'accueil (bouton ←)',
+    '4. Écrivez votre sujet (histoire, idée, actualité…)',
+    '5. Choisissez un style parmi les 90 proposés',
+    '6. Cliquez sur "Lancer la génération"', '',
+    '⏱️ Temps : 3 à 10 minutes selon le nombre de scènes',
+    'et de comptes connectés.', '',
+    '📥 Téléchargements :',
+    '• Sous chaque vidéo : bouton vert "Télécharger"',
+    '• En bas : bouton "Tout télécharger (ZIP)"', '',
+    '🤖 Assistant IA :',
+    'Une bulle flottante en bas à droite vous permet de',
+    'poser des questions à tout moment.', '',
+    '🔑 Compte gratuit : platform.agnes-ai.com', '',
+    'Raccourcis :',
+    '• Échap : quitter la lecture ou l\'assistant'
+  ].join('\n');
+  alert(help);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════════
+(function init(){
+  try { initTTS(); } catch(e){}
+  try { refreshKeyPool(); } catch(e){}
+  try { state.stats = loadStats(); } catch(e){}
+  try { updateStatsUI(); } catch(e){}
+  try { updateApiPanel(); } catch(e){}
+  try { updateOnboarding(); } catch(e){}
+  try { updateAccountBadge(); } catch(e){}
+  try { renderModeCategories(); } catch(e){}
+  try { selectMode(941); } catch(e){ consoleLog('error','INIT','selectMode : ' + e.message); }
+  try { updateLaunchButton(); } catch(e){}
+  try { initAssistant(); } catch(e){ consoleLog('error','INIT','initAssistant : ' + e.message); }
+  try { attachAssistantEvents(); } catch(e){ consoleLog('error','INIT','attachAssistantEvents : ' + e.message); }
+  try { attachTourEvents(); } catch(e){ consoleLog('error','INIT','attachTourEvents : ' + e.message); }
+  try { attachHelpEvents(); } catch(e){ consoleLog('error','INIT','attachHelpEvents : ' + e.message); }
+
+  document.body.style.overflow = '';
+  document.body.style.pointerEvents = '';
+  const tourOverlay = $('tour-overlay'), tourCardOverlay = $('tour-card-overlay'), tourSpotlight = $('tour-spotlight'), tourArrow = $('tour-arrow');
+  if(tourOverlay){ tourOverlay.style.display = 'none'; tourOverlay.style.pointerEvents = 'none'; tourOverlay.classList.remove('visible'); }
+  if(tourCardOverlay){ tourCardOverlay.style.display = 'none'; tourCardOverlay.style.pointerEvents = 'none'; tourCardOverlay.classList.remove('visible'); }
+  if(tourSpotlight){ tourSpotlight.style.display = 'none'; tourSpotlight.classList.remove('visible'); }
+  if(tourArrow){ tourArrow.style.display = 'none'; tourArrow.classList.remove('visible'); }
+
+  setTimeout(() => {
+    try { const seen = safeLocalStorage.get(TUTORIAL_STORAGE); if(seen !== '1') initTour(); } catch(e){ consoleLog('error','INIT','initTour : ' + e.message); }
+  }, 1000);
+
+  const savedTheme = safeLocalStorage.get(THEME_STORAGE) || 'auto';
+  applyTheme(savedTheme);
+
+  const hash = window.location.hash.replace('#', '');
+  navigateTo(['home','account','preferences'].includes(hash) ? hash : 'home');
+
+  const navAccountBtn = $('nav-account-btn'); if(navAccountBtn) navAccountBtn.addEventListener('click', () => navigateTo('account'));
+  const navPreferencesBtn = $('nav-preferences-btn'); if(navPreferencesBtn) navPreferencesBtn.addEventListener('click', () => navigateTo('preferences'));
+  const accountBack = $('account-back'); if(accountBack) accountBack.addEventListener('click', goBack);
+  const preferencesBack = $('preferences-back'); if(preferencesBack) preferencesBack.addEventListener('click', goBack);
+
+  const onboardingBtn = $('onboarding-btn'); if(onboardingBtn) onboardingBtn.addEventListener('click', (e) => { e.stopPropagation(); navigateTo('account'); });
+  const onboardingPanel = $('onboarding'); if(onboardingPanel) onboardingPanel.addEventListener('click', () => navigateTo('account'));
+
+  const saveBtn = $('api-save-btn'); if(saveBtn) saveBtn.addEventListener('click', saveKeysFromUI);
+  const testBtn = $('api-test-btn'); if(testBtn) testBtn.addEventListener('click', testApiKey);
+  const deleteAllBtn = $('delete-all-keys-btn'); if(deleteAllBtn) deleteAllBtn.addEventListener('click', deleteAllKeys);
+  const keysInput = $('api-keys-input');
+  if(keysInput) keysInput.addEventListener('keydown', e => { if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); saveKeysFromUI(); } });
+
+  const subjectInput = $('subject-input');
+  if(subjectInput) subjectInput.addEventListener('input', updateLaunchButton);
+  const exampleBtn = $('subject-example-btn');
+  if(exampleBtn) exampleBtn.addEventListener('click', () => {
+    const examples = ['La France insoumise et les mobilisations lycéennes','Un chaton détective enquête dans un Paris rétrofuturiste','Un chaton astronaute découvre une planète pastel','La campagne municipale de La France insoumise à Roubaix','Un chaton cowboy traverse un désert de pastel','Un film noir avec un chaton détective dans les années 50','Une aventure de chatons ninjas dans un Tokyo futuriste'];
+    if(subjectInput){ subjectInput.value = examples[Math.floor(Math.random() * examples.length)]; updateLaunchButton(); }
+  });
+
+  const launchBtn = $('launch-floating'); if(launchBtn) launchBtn.addEventListener('click', runPipeline);
+  const stopBtn = $('stop-floating'); if(stopBtn) stopBtn.addEventListener('click', () => { state.stopRequested = true; stopTTS(); consoleLog('warn','ARRÊT','Demandé'); setStatus('Arrêt en cours…'); });
+
+  const playBtn = $('play-film-btn'); if(playBtn) playBtn.addEventListener('click', playFilm);
+  const replayBtn = $('replay-btn'); if(replayBtn) replayBtn.addEventListener('click', playFilm);
+  const zipBtn = $('download-zip-btn'); if(zipBtn) zipBtn.addEventListener('click', exportZip);
+  const playerOverlay = $('player-overlay'); if(playerOverlay) playerOverlay.addEventListener('click', (e) => { if(e.target === playerOverlay) stopFilmPlayback(); });
+  const playerClose = $('player-close'); if(playerClose) playerClose.addEventListener('click', stopFilmPlayback);
+  document.addEventListener('keydown', e => { if(e.key === 'Escape' && state.isPlayingFilm) stopFilmPlayback(); });
+
+  const voiceToggle = $('voice-toggle');
+  if(voiceToggle) voiceToggle.addEventListener('change', e => { state.voiceEnabled = e.target.checked; if(!state.voiceEnabled) stopTTS(); });
+
+  const clearBtn = $('console-clear-btn'); if(clearBtn) clearBtn.addEventListener('click', clearConsole);
+  const copyBtn = $('console-copy-btn'); if(copyBtn) copyBtn.addEventListener('click', copyConsole);
+
+  const advancedToggle = $('advanced-toggle');
+  if(advancedToggle) advancedToggle.addEventListener('click', () => {
+    const panel = $('advanced-panel');
+    if(panel){ panel.classList.toggle('visible'); advancedToggle.textContent = panel.classList.contains('visible') ? '🖥️ Avancé (masquer)' : '🖥️ Avancé (pour développeurs)'; }
+  });
+
+  const themeBtn = $('theme-toggle-btn'); if(themeBtn) themeBtn.addEventListener('click', toggleTheme);
+  const installBtn = $('install-btn'); if(installBtn) installBtn.addEventListener('click', installPWA);
+  const helpBtn = $('help-btn'); if(helpBtn) helpBtn.addEventListener('click', showHelp);
+
+  const scriptToggle = $('script-toggle');
+  if(scriptToggle) scriptToggle.addEventListener('click', () => {
+    const details = $('script-details');
+    if(details){ details.classList.toggle('visible'); const chevron = scriptToggle.querySelector('.chevron'); if(chevron) chevron.textContent = details.classList.contains('visible') ? '▾' : '▸'; }
+  });
+
+  window.addEventListener('beforeunload', (e) => {
+    if(state.isRunning){ e.preventDefault(); e.returnValue = 'Une génération est en cours. Si vous quittez, elle sera perdue.'; return e.returnValue; }
+  });
+
+  document.addEventListener('click', () => { if(stopTitleBlink) stopTitleBlink(); });
+
+  setInterval(() => { if(state.videos.length > 0) renderVideos(); }, 2000);
+  setInterval(renderKeyList, 2000);
+
+  consoleLog('success','INIT','Studio Master v5.2 prêt · ' + MODES.length + ' styles + Assistant IA');
+  consoleLog('info','INIT','iOS : ' + (isIOS ? 'oui' : 'non') + ' · Thème : ' + state.theme);
+})();
+
+})();
+</script>
+</body>
+</html>
