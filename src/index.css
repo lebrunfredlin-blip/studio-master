@@ -450,72 +450,6 @@ select {
   }
 }
 
-/* Splash Screen */
-.splash-screen {
-  position: fixed;
-  inset: 0;
-  background: #0a0a12;
-  z-index: 9999;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  transition: opacity 0.4s ease;
-}
-.splash-screen.fade-out {
-  opacity: 0;
-  pointer-events: none;
-}
-.splash-logo {
-  width: 100px;
-  height: 100px;
-  animation: splashPulse 2s ease-in-out infinite;
-}
-@keyframes splashPulse {
-  0%, 100% { transform: scale(0.98); opacity: 0.85; }
-  50% { transform: scale(1.02); opacity: 1; }
-}
-.splash-title {
-  margin-top: 24px;
-  font-size: 14px;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  color: #8a8896;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-.splash-bar {
-  margin-top: 20px;
-  width: 200px;
-  height: 3px;
-  background: rgba(229, 193, 90, 0.15);
-  border-radius: 2px;
-  overflow: hidden;
-  position: relative;
-}
-.splash-bar::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, #e5c15a, transparent);
-  animation: splashShine 1.5s ease-in-out infinite;
-}
-@keyframes splashShine {
-  0% { left: -100%; }
-  100% { left: 100%; }
-}
-.splash-loading {
-  margin-top: 12px;
-  font-size: 11px;
-  color: #4a4858;
-  font-style: italic;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-@media (prefers-reduced-motion: reduce) {
-  .splash-logo, .splash-bar::after { animation: none; }
-}
 .btn-stop {
   border-color: var(--err);
   color: var(--err);
@@ -1951,3 +1885,128 @@ body.has-floating-btn {
   .tour-icon { font-size: 2rem; }
   .help-popover { max-width: calc(100% - 1rem); }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   PROFESSIONAL STUDIO CONTROLS & ASPECT RATIO SELECTOR
+   ══════════════════════════════════════════════════════════════════ */
+.ratio-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.6rem;
+}
+@media (max-width: 640px) {
+  .ratio-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.ratio-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.85rem 0.5rem;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  color: var(--dim);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  text-align: center;
+}
+.ratio-card:hover {
+  border-color: var(--acc);
+  color: var(--ink);
+  background: var(--bg3);
+}
+.ratio-card.active {
+  border-color: var(--acc);
+  background: rgba(229, 193, 90, 0.12);
+  color: var(--acc);
+  box-shadow: 0 0 12px rgba(229, 193, 90, 0.15);
+}
+
+.ratio-viewport-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+  margin-bottom: 0.2rem;
+}
+.ratio-viewport-icon.r-9-16 {
+  width: 16px;
+  height: 28px;
+}
+.ratio-viewport-icon.r-16-9 {
+  width: 28px;
+  height: 16px;
+}
+.ratio-viewport-icon.r-1-1 {
+  width: 20px;
+  height: 20px;
+}
+.ratio-viewport-icon.r-4-3 {
+  width: 24px;
+  height: 18px;
+}
+
+.ratio-value {
+  font-family: var(--fm);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
+.ratio-desc {
+  font-size: 0.68rem;
+  color: var(--faint);
+  line-height: 1.2;
+}
+.ratio-card.active .ratio-desc {
+  color: rgba(229, 193, 90, 0.8);
+}
+
+/* Studio Section Container */
+.studio-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 1.1rem;
+  margin-bottom: 1.1rem;
+  transition: border-color 0.2s ease;
+}
+.studio-box:focus-within {
+  border-color: rgba(229, 193, 90, 0.4);
+}
+
+.studio-box-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.studio-box-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.studio-badge-subtle {
+  font-family: var(--fm);
+  font-size: 0.72rem;
+  color: var(--dim);
+}
+

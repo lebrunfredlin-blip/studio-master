@@ -1,4 +1,5 @@
 import { ModeItem, WA_PALETTES } from '../data/catalog';
+import { cleanVisualPrompt } from './agnesApi';
 
 export interface GeneratedScene {
   sceneNumber: number;
@@ -174,15 +175,18 @@ export function parseScenarioWith5Strategies(
 function finalizeScene(partial: Partial<GeneratedScene>, index: number, duration: number, mode: ModeItem): GeneratedScene {
   const palLabel = (mode.palette || 'pink-mint').toLowerCase();
   const chosenPalette = WA_PALETTES.find(p => p.id === mode.palette || p.label.toLowerCase().includes(palLabel)) || WA_PALETTES[0];
+  const vis = partial.visualDescription?.trim() || `Un personnage évolue dans le décor de ${mode.name}.`;
+  const vPrompt = cleanVisualPrompt(partial.videoPrompt || `${vis}.`);
+
   return {
     sceneNumber: index,
     title: partial.title || `Séquence #${index}`,
     duration: duration,
     voiceover: partial.voiceover?.trim() || `Séquence ${index} : une exploration minutieuse de ${mode.name}.`,
-    visualDescription: partial.visualDescription?.trim() || `Plan centré géométrique montrant les éléments clés dans un décor pastel à la Wes Anderson.`,
-    cameraMovement: partial.cameraMovement || 'Travelling avant lent parfaitement centré',
-    videoPrompt: `Cinematic footage, style of ${mode.style}, symmetrical framing, vintage pastel palette, 4k ultra-detailed`,
-    soundAmbience: 'Musique douce de celesta et accordéon rétro',
+    visualDescription: vis,
+    cameraMovement: partial.cameraMovement || 'Plan fixe centré',
+    videoPrompt: vPrompt,
+    soundAmbience: 'Musique douce et bruitages d\'ambiance',
     overlayText: partial.overlayText || `ACTE ${index}`,
     colorHexes: chosenPalette.colors.slice(0, 3),
     status: 'pending'
@@ -203,15 +207,19 @@ function normalizeProject(
   const rawScenes = Array.isArray(rawObj.scenes) ? rawObj.scenes : [];
 
   const scenes: GeneratedScene[] = rawScenes.map((s: any, idx: number) => {
+    const rawVisual = s.visualDescription || s.title || `Scène ${idx + 1}`;
+    const rawPrompt = s.videoPrompt || `${rawVisual} dans un décor de ${mode.name}`;
+    const cleanPrompt = cleanVisualPrompt(rawPrompt);
+
     return {
       sceneNumber: s.sceneNumber || idx + 1,
       title: s.title || `Séquence ${idx + 1}`,
       duration: s.duration || duration,
       voiceover: s.voiceover || `Séquence ${idx + 1} du clip ${mode.name}.`,
-      visualDescription: s.visualDescription || `Composition cinématographique symétrique en couleurs douces.`,
+      visualDescription: rawVisual,
       cameraMovement: s.cameraMovement || 'Travelling latéral fluide',
-      videoPrompt: s.videoPrompt || `A cinematic shot in style of ${mode.style}, pastel colors, 8k, symmetrical`,
-      soundAmbience: s.soundAmbience || 'Ambiance feutrée avec instruments acoustiques',
+      videoPrompt: cleanPrompt,
+      soundAmbience: s.soundAmbience || 'Ambiance feutrée',
       overlayText: s.overlayText || `ACTE ${idx + 1}`,
       colorHexes: Array.isArray(s.colorHexes) && s.colorHexes.length ? s.colorHexes : chosenPalette.colors.slice(0, 3),
       status: 'pending'
@@ -282,6 +290,13 @@ export function generateProceduralFallback(
       visual = `Mouvement de caméra fluide dévoilant des accessoires d’époque, lettres manuscrites et objets insolites harmonisés en ${chosenPalette.colors[num % chosenPalette.colors.length]}.`;
     }
 
+    const concreteAction = num === 1
+      ? `Un personnage regarde fixement la scène dans le décor de ${safeSubject}`
+      : num === count
+      ? `Un personnage salue dans la lumière du décor de ${safeSubject}`
+      : `Un personnage manipule un objet curieux dans le décor de ${safeSubject}`;
+    const vPrompt = cleanVisualPrompt(concreteAction);
+
     scenes.push({
       sceneNumber: num,
       title: sceneTitles[i] || `Scène ${num}`,
@@ -289,8 +304,8 @@ export function generateProceduralFallback(
       voiceover: voice,
       visualDescription: visual,
       cameraMovement: cameraMotions[i % cameraMotions.length],
-      videoPrompt: `Cinematic frame, style of Wes Anderson, pastel aesthetics, symmetrical composition, colors ${chosenPalette.colors.join(', ')}, Kodak film stock, 35mm photography`,
-      soundAmbience: 'Accordéon mélancolique, battement d’horloge vintage et clochettes d’hôtel',
+      videoPrompt: vPrompt,
+      soundAmbience: 'Musique douce et bruits d\'ambiance',
       overlayText: `CHAPITRE ${num}`,
       colorHexes: chosenPalette.colors.slice(0, 3),
       status: 'pending'

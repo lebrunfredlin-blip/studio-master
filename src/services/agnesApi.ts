@@ -21,6 +21,54 @@ const VIDEO_POLL_INTERVALS = [8, 8, 12, 12, 20, 20, 25];
 const VIDEO_MAX_POLL_ATTEMPTS = 100;
 const MODEL_VIDEO = 'agnes-video-v2.0';
 
+// Remplacement des termes abstraits / émotionnels par du visuel concret
+const ABSTRACT_MAP: [RegExp, string][] = [
+  [/\bpauvre(s)?\b/gi, 'aux vêtements usés et déchirés'],
+  [/\briche(s)?\b/gi, 'dans un costume doré et soyeux'],
+  [/\btriste(s)?\b/gi, 'tête baissée, regard vers le sol'],
+  [/\bheureu[x|se](s)?\b/gi, 'avec un large sourire'],
+  [/\bcolère\b/gi, 'sourcils froncés et poings serrés'],
+  [/\bpeur\b/gi, 'yeux écarquillés qui recule'],
+  [/\bamour\b/gi, 'regard chaleureux'],
+  [/\bmystérieu[x|se](s)?\b/gi, 'dans l\'ombre d\'un long manteau'],
+  [/\bintelligent(e)?(s)?\b/gi, 'avec des lunettes rondes et un carnet'],
+  [/\bfatigué(e)?(s)?\b/gi, 'épaules affaissées marchant avec lenteur'],
+  [/\bmagique(s)?\b/gi, 'émettant de fines étincelles dorées'],
+  [/\bsplendide(s)?\b/gi, 'aux finitions nettes'],
+  [/\bmagnifique(s)?\b/gi, 'lumineux et détaillé']
+];
+
+/**
+ * Nettoie et transforme le prompt pour le mode texte → vidéo :
+ * - Uniquement du visuel physique (sujet + action + décor)
+ * - Interdiction des termes abstraits (riche, pauvre, triste, heureux)
+ * - Pas de métaphores ni d'instructions de caméra complexes
+ * - Longueur strictement inférieure à 200 caractères
+ */
+export function cleanVisualPrompt(rawPrompt: string): string {
+  if (!rawPrompt) return 'Un personnage marche dans une rue pavée.';
+  let cleaned = rawPrompt.trim();
+
+  // Remplacement des mots abstraits par des descriptions concrètes
+  for (const [regex, replacement] of ABSTRACT_MAP) {
+    cleaned = cleaned.replace(regex, replacement);
+  }
+
+  // Suppression des métaphores et verbes d'état interne
+  cleaned = cleaned
+    .replace(/\b(se sent|ressent|pense à|rêve de|nostalgique|mélancolique)\b/gi, '')
+    .replace(/\b(la caméra zoome|gros plan de cinéma|effet spécial complexe)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Limite stricte à moins de 200 caractères
+  if (cleaned.length > 195) {
+    cleaned = cleaned.slice(0, 192).trim() + '...';
+  }
+
+  return cleaned;
+}
+
 class AgnesPoolManager {
   private keys: AgnesKeyStatus[] = [];
   private currentKeyIndex = 0;
@@ -232,7 +280,11 @@ class AgnesPoolManager {
     const data = await res.json();
     const compositeId = data.video_id || data.id || data.task_id;
     if (!compositeId) {
-      if (data.url || data.video_url) return data.url || data.video_url;
+      const directUrl = data.url || data.video_url;
+      if (directUrl) {
+        await this.verifyVideoQuality(directUrl);
+        return directUrl;
+      }
       throw new Error('Réponse Agnes invalide : identifiant de vidéo introuvable.');
     }
 
@@ -279,16 +331,55 @@ class AgnesPoolManager {
             const pollData = await pollRes.json();
             const status = pollData.status;
             if (status === 'completed' || status === 'succeeded' || status === 'done') {
-              return pollData.video_url || pollData.url || (pollData.metadata && pollData.metadata.url) || pollData.output;
+              const finalUrl = pollData.video_url || pollData.url || (pollData.metadata && pollData.metadata.url) || pollData.output;
+              if (finalUrl) {
+                await this.verifyVideoQuality(finalUrl);
+                return finalUrl;
+              }
             } else if (status === 'failed' || status === 'error') {
               throw new Error(pollData.error || 'Génération vidéo Agnes échouée.');
             }
           }
-        } catch {}
+        } catch (pollErr: any) {
+          if (pollErr.message && pollErr.message.includes("La vidéo n'a pas pu être générée")) {
+            throw pollErr;
+          }
+        }
       }
     }
 
     throw new Error('Délai maximal dépassé pour le rendu de la vidéo Agnes.');
+  }
+
+  // Contrôle de qualité : vérifier que la vidéo existe et ne fait pas moins de 10 Ko (vidéo vide)
+  private async verifyVideoQuality(videoUrl: string): Promise<void> {
+    try {
+      let size = 0;
+      // 1. Essai avec fetch HEAD
+      try {
+        const headRes = await fetch(videoUrl, { method: 'HEAD' });
+        const cl = headRes.headers.get('content-length');
+        if (cl) size = parseInt(cl, 10);
+      } catch {}
+
+      // 2. Si le HEAD est bloqué par CORS ou ne donne pas content-length, vérification par fetch GET
+      if (!size) {
+        try {
+          const testRes = await fetch(videoUrl);
+          const blob = await testRes.blob();
+          size = blob.size;
+        } catch {}
+      }
+
+      // Si la vidéo fait moins de 10 Ko (10240 octets), elle est considérée comme vide
+      if (size > 0 && size < 10240) {
+        throw new Error("La vidéo n'a pas pu être générée, réessayez avec un sujet plus visuel.");
+      }
+    } catch (err: any) {
+      if (err.message && err.message.includes("La vidéo n'a pas pu être générée")) {
+        throw err;
+      }
+    }
   }
 }
 
