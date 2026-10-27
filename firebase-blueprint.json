@@ -1,46 +1,38 @@
 {
   "entities": {
-    "user": {
-      "title": "User Profile",
-      "description": "User account information",
+    "Project": {
+      "title": "Project",
+      "description": "A generated project.",
       "type": "object",
       "properties": {
-        "uid": { "type": "string", "maxLength": 128 },
-        "email": { "type": "string", "maxLength": 256 },
-        "displayName": { "type": "string", "maxLength": 128 },
-        "photoURL": { "type": "string", "maxLength": 1024 },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "userId": { "type": "string", "description": "The ID of the user who created the project." },
+        "subject": { "type": "string", "description": "The subject of the project." },
+        "title": { "type": "string", "description": "The title of the project." },
+        "modeName": { "type": "string", "description": "The mode used." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "The creation time." },
+        "projectData": { "type": "object", "description": "The generated project data." }
       },
-      "required": ["uid", "email"]
+      "required": ["userId", "subject", "title", "createdAt"]
     },
-    "project": {
-      "title": "Generated Project",
-      "description": "Saved video generation project",
+    "User": {
+      "title": "User",
+      "description": "A user profile.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "userId": { "type": "string", "maxLength": 128 },
-        "title": { "type": "string", "maxLength": 256 },
-        "subject": { "type": "string", "maxLength": 1024 },
-        "modeName": { "type": "string", "maxLength": 128 },
-        "modeNumber": { "type": "number" },
-        "scenesCount": { "type": "number" },
-        "durationPerScene": { "type": "number" },
-        "aspectRatio": { "type": "string", "maxLength": 16 },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "email": { "type": "string", "format": "email", "description": "The user email." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "The creation time." }
       },
-      "required": ["id", "userId", "title", "subject", "modeName", "createdAt"]
+      "required": ["email", "createdAt"]
     }
   },
   "firestore": {
     "/users/{userId}": {
-      "schema": "user",
-      "description": "User profiles"
+      "schema": { "$ref": "Project" }, 
+      "description": "User profile document."
     },
     "/users/{userId}/projects/{projectId}": {
-      "schema": "project",
-      "description": "User's generated video projects sub-collection"
+      "schema": { "$ref": "Project" },
+      "description": "Projects belonging to a user."
     }
   }
 }

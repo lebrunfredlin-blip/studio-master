@@ -135,12 +135,12 @@ FORMAT JSON REQUIS :
 Assure-toi que la narration française soit rythmée, fluide, percutante pour TikTok/Cinéma et que chaque scène se termine sur un suspense ou une transition fluide vers la suivante.`;
 
     const candidateModels = [
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
-      'gemini-3.5-flash',
-      'gemini-3.8-flash',
       'gemini-3.1-flash-lite',
-      'gemini-flash-latest'
+      'gemini-flash-latest',
+      'gemini-2.0-flash',
+      'gemini-2.5-flash',
+      'gemini-3.5-flash',
+      'gemini-3.8-flash'
     ];
     let lastError: any = null;
     let responseText = '';

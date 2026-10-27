@@ -154,35 +154,7 @@ const HELP_CONTENT: Record<string, { icon: string; title: string; body: string; 
 };
 
 export default function App() {
-  // Splash screen init
-  useEffect(() => {
-    const splashStart = Date.now();
-    const MIN_DISPLAY = 800;
-    const MAX_DISPLAY = 3000;
-    
-    function hideSplash() {
-      const splash = document.getElementById('splash-screen');
-      if (!splash) return;
-      const elapsed = Date.now() - splashStart;
-      const waitMore = Math.max(0, MIN_DISPLAY - elapsed);
-      setTimeout(() => {
-        splash.classList.add('fade-out');
-        setTimeout(() => {
-          splash.style.display = 'none';
-        }, 450);
-      }, waitMore);
-    }
-    
-    window.addEventListener('load', hideSplash);
-    const timer = setTimeout(() => {
-      const splash = document.getElementById('splash-screen');
-      if (splash && !splash.classList.contains('fade-out')) hideSplash();
-    }, MAX_DISPLAY);
-    return () => {
-      window.removeEventListener('load', hideSplash);
-      clearTimeout(timer);
-    };
-  }, []);
+
   // ─── ROUTER & AUTH STATE ───
   const [currentPage, setCurrentPage] = useState<'home' | 'account' | 'preferences' | 'auth'>('home');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -283,30 +255,6 @@ export default function App() {
   const [overlayProgress, setOverlayProgress] = useState<number>(0);
   const [spokenWordIndex, setSpokenWordIndex] = useState<number>(-1);
   const [isExportingZip, setIsExportingZip] = useState<boolean>(false);
-(function() {
-  const splashStart = Date.now();
-  const MIN_DISPLAY = 800;
-  const MAX_DISPLAY = 3000;
-  
-  function hideSplash() {
-    const splash = document.getElementById('splash-screen');
-    if (!splash) return;
-    const elapsed = Date.now() - splashStart;
-    const waitMore = Math.max(0, MIN_DISPLAY - elapsed);
-    setTimeout(() => {
-      splash.classList.add('fade-out');
-      setTimeout(() => {
-        splash.style.display = 'none';
-      }, 450);
-    }, waitMore);
-  }
-  
-  window.addEventListener('load', hideSplash);
-  setTimeout(() => {
-    const splash = document.getElementById('splash-screen');
-    if (splash && !splash.classList.contains('fade-out')) hideSplash();
-  }, MAX_DISPLAY);
-})();
 
   // ─── TUTORIAL STATE ───
   const [tourStep, setTourStep] = useState<number | null>(null);
@@ -1382,25 +1330,6 @@ export default function App() {
 
   return (
     <>
-      <div className="splash-screen" id="splash-screen">
-        <svg className="splash-logo" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="50" cy="50" r="38" stroke="#e5c15a" strokeWidth="1.5" fill="none" opacity="0.4"/>
-          <g fill="#e5c15a">
-            <path d="M50 12 L58 28 L42 28 Z"/>
-            <path d="M85 38 L72 48 L78 60 Z"/>
-            <path d="M85 62 L72 52 L78 40 Z"/>
-            <path d="M50 88 L42 72 L58 72 Z"/>
-            <path d="M15 62 L28 52 L22 40 Z"/>
-            <path d="M15 38 L28 48 L22 60 Z"/>
-          </g>
-          <circle cx="50" cy="50" r="8" fill="#0a0a12"/>
-          <circle cx="50" cy="50" r="9" stroke="#e5c15a" strokeWidth="1" fill="none" opacity="0.8"/>
-        </svg>
-        <div className="splash-title">Studio Master</div>
-        <div className="splash-bar"></div>
-        <div className="splash-loading">Chargement…</div>
-      </div>
-      
       {/* ═══════════ HEADER COMMUN ═══════════ */}
       <header className="app-header" id="app-header">
         <div className="header-left">
@@ -1744,6 +1673,28 @@ export default function App() {
             ? '🔑 Ajoutez votre clé API'
             : subject.trim().length < 5
             ? '💡 Décrivez votre sujet'
+            : '▶ Lancer la génération'}
+        </button>
+
+        {/* Floating Launch Button */}
+        <button
+          type="button"
+          className={`launch-floating ${currentPage === 'home' && !isGenerating ? 'visible' : ''} ${subject.trim().length > 0 && activeMode && !isGenerating ? 'pulse-btn' : ''}`}
+          id="launch-floating"
+          disabled={isGenerating || (currentUser ? (subject.trim().length < 5 || !hasActiveKey) : false)}
+          onClick={() => {
+            if (!currentUser) {
+              setPendingLaunchAfterAuth(true);
+              setShowAuthModal(true);
+            } else {
+              handleLaunch();
+            }
+          }}
+        >
+          {!currentUser
+            ? '🔑 Connectez-vous'
+            : isGenerating
+            ? '⏳ Génération…'
             : '▶ Lancer la génération'}
         </button>
 

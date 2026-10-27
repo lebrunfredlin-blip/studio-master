@@ -16,18 +16,46 @@ import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
+let auth: any = null;
+let db: any = null;
+let app: any = null;
+let googleProvider: any = null;
 
-if (typeof window !== 'undefined') {
-  isSupported().then((supported) => {
-    if (supported) {
-      getAnalytics(app);
+try {
+  if (firebaseConfig.apiKey && firebaseConfig.apiKey !== 'YOUR_API_KEY') {
+    app = initializeApp(firebaseConfig);
+    db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    auth = getAuth(app);
+    googleProvider = new GoogleAuthProvider();
+    
+    if (typeof window !== 'undefined') {
+      isSupported().then((supported) => {
+        if (supported) {
+          getAnalytics(app);
+        }
+      }).catch(() => {});
     }
-  }).catch(() => {});
+  } else {
+    console.warn("Firebase configuration is missing or invalid.");
+  }
+} catch (e) {
+  console.error("Firebase initialization failed:", e);
 }
+
+// Dummy objects if initialization failed to prevent crashes
+if (!auth) {
+  auth = {
+    currentUser: null,
+  };
+}
+if (!db) {
+  db = {};
+}
+if (!googleProvider) {
+  googleProvider = {};
+}
+
+export { auth, db, googleProvider };
 
 export enum OperationType {
   CREATE = 'create',
@@ -64,7 +92,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
       emailVerified: auth.currentUser?.emailVerified,
       isAnonymous: auth.currentUser?.isAnonymous,
       tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+      providerInfo: auth.currentUser?.providerData?.map((provider: any) => ({
         providerId: provider.providerId,
         email: provider.email,
       })) || []
@@ -77,6 +105,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 export async function testFirestoreConnection() {
+  if (!db || !db.firestore) return; // Cannot test without db
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
@@ -87,7 +116,7 @@ export async function testFirestoreConnection() {
 }
 
 // Perform initial connection test in browser
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && db && db.firestore) {
   testFirestoreConnection().catch(() => {});
 }
 
